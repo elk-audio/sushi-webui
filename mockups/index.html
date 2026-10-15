@@ -1,0 +1,1132 @@
+<title>Sushi WebUI Sketch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a "bench" (device switcher + caption) holding a framed app; the app is a stage console:
+   graphite surfaces with a cool bias, one amber accent for interaction, meter semantics kept separate.
+   Single dark world on purpose (stage, low glare), so no light theme blocks. */
+:root{
+  color-scheme: dark;
+  --bg:#101318;          /* bench */
+  --app:#15191f;         /* app ground */
+  --s1:#1c2129;          /* surface */
+  --s2:#252b35;          /* raised */
+  --s3:#2f3642;          /* control track */
+  --line:#343c49;
+  --text:#e7e9ee;
+  --muted:#8c95a5;
+  --faint:#5d6676;
+  --accent:#f0a83c;      /* interaction / focus / value arcs */
+  --accent-ink:#1b1306;
+  --solo:#4fa8e0;
+  --m-green:#45c486; --m-amber:#e8bf45; --m-red:#ec4d4f;
+  --font-ui:"IBM Plex Sans Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+  --font-num:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r:8px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:12px;}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{font:inherit;color:var(--text);background:var(--s2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-height:40px}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+
+/* ---------- bench ---------- */
+.bench-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-bottom:10px}
+.bench-title{font-weight:700;font-size:15px;letter-spacing:.02em;display:flex;gap:8px;align-items:baseline}
+.bench-title small{font-weight:400;color:var(--muted);font-size:13px}
+.seg{display:inline-flex;background:var(--s1);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px;flex-wrap:wrap}
+.seg button{padding:6px 10px;border-radius:6px;color:var(--muted);font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--s3);color:var(--text)}
+.bench-bar label{color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase;display:flex;gap:8px;align-items:center}
+.bench-bar select{min-height:32px;padding:4px 8px;font-size:13px}
+.ghost-btn{padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--muted)}
+.ghost-btn:hover{color:var(--text)}
+.caption{color:var(--muted);font-size:13px;margin:0 0 10px;min-height:1.3em}
+.caption b{color:var(--text);font-weight:600}
+.stage{position:relative}
+.frame{position:relative;transform-origin:top left;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.frame.auto{width:100%;height:calc(100dvh - 110px);min-height:520px;border-radius:10px;transform:none!important}
+.frame-label{position:absolute;top:-2px;right:0;color:var(--faint);font-size:12px}
+
+/* ---------- app ---------- */
+#app{position:relative;width:100%;height:100%;background:var(--app);display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none}
+#app.offline .content, #app.offline .dock{opacity:.45;pointer-events:none}
+.topbar{display:flex;align-items:center;gap:12px;padding:0 12px;height:48px;border-bottom:1px solid var(--line);background:var(--s1);flex:none}
+.proj{display:flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap}
+.proj .dirty{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+.proj .clipdot{width:8px;height:8px;border-radius:50%;background:var(--m-red);box-shadow:0 0 8px var(--m-red)}
+.crumbs{display:flex;align-items:center;gap:6px;color:var(--muted);min-width:0;overflow:hidden;white-space:nowrap}
+.crumbs button{color:var(--muted);padding:6px 2px}
+.crumbs button:hover{color:var(--text)}
+.crumbs .here{color:var(--text);font-weight:600}
+.crumbs .sep{color:var(--faint)}
+.spacer{flex:1}
+.transport{display:flex;align-items:center;gap:8px}
+.tempo{padding:6px 8px;border-radius:6px;background:var(--s2);cursor:ns-resize;touch-action:none}
+.tempo small{color:var(--muted);font-family:var(--font-ui);margin-left:4px}
+.tbtn{width:36px;height:36px;border-radius:6px;display:grid;place-items:center;background:var(--s2)}
+.tbtn.on{background:var(--accent);color:var(--accent-ink)}
+.cpu{color:var(--muted);font-size:13px;white-space:nowrap}
+.conn{width:10px;height:10px;border-radius:50%;background:var(--m-green);flex:none}
+.conn.lost{background:var(--m-amber);animation:blink 1s infinite}
+.backbtn{display:flex;align-items:center;gap:2px;color:var(--accent);padding:8px 4px;font-weight:600;white-space:nowrap}
+.ptitle{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.banner{background:var(--m-amber);color:#1e1704;font-weight:600;padding:6px 12px;font-size:13px;flex:none}
+.content{flex:1;min-height:0;overflow:auto;position:relative}
+.dock{flex:none;border-top:1px solid var(--line);background:var(--s1)}
+.tabbar{flex:none;display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);background:var(--s1);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar button{padding:10px 0 12px;color:var(--muted);font-size:12px;display:flex;flex-direction:column;align-items:center;gap:3px;letter-spacing:.04em}
+.tabbar button[aria-current="true"]{color:var(--accent)}
+.tabbar svg{width:20px;height:20px}
+
+/* shared controls */
+.tog{min-width:34px;height:30px;border-radius:5px;background:var(--s3);color:var(--muted);font-weight:700;font-size:13px}
+.tog.m.on{background:var(--m-amber);color:#211a03}
+.tog.s.on{background:var(--solo);color:#04131d}
+.kind{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kind b{color:var(--text);font-weight:600}
+.knob{display:flex;flex-direction:column;align-items:center;gap:2px;touch-action:none;cursor:ns-resize;outline:none}
+.knob svg{display:block;overflow:visible}
+.knob .trk{stroke:var(--s3)}
+.knob .val{stroke:var(--accent)}
+.knob .cap{fill:var(--s2);stroke:var(--line)}
+.knob .ind{stroke:var(--text);stroke-width:6;stroke-linecap:round}
+.knob .lab{font-size:12px;color:var(--muted);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.knob .v{font-family:var(--font-num);font-size:11px;color:var(--text);white-space:nowrap}
+.knob.pinned .lab{color:var(--accent)}
+.knob.pickable{cursor:pointer}
+.knob.pickable svg{opacity:.55}
+.knob.pickable.pinned svg{opacity:1}
+.knob:focus-visible .cap{stroke:var(--accent)}
+.dragging .val{stroke:#ffc76d}
+
+/* ---------- mixer: strips ---------- */
+.mixer{display:flex;height:100%;min-height:0}
+.strips{flex:1;display:flex;gap:6px;padding:10px;overflow-x:auto;overflow-y:hidden;min-width:0}
+.strip{flex:none;width:92px;background:var(--s1);border-radius:var(--r);display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:0 6px 8px;position:relative;border-top:4px solid var(--tc)}
+.is-tablet .strip{width:80px}
+.is-short .chips,.is-short .strip .kind{display:none}
+.is-short .strip{gap:4px}
+.strip-name{font-weight:700;padding:8px 0 0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip-name:hover{color:var(--accent)}
+.chips{display:flex;flex-direction:column;gap:3px;min-height:72px}
+.chip{font-size:12px;text-align:left;padding:3px 6px;border-radius:4px;background:var(--s2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.chip.byp{color:var(--faint);text-decoration:line-through}
+.chip.more{background:none;color:var(--muted);padding-left:6px}
+.chip:hover{outline:1px solid var(--line)}
+.strip .knob{align-self:center}
+.fz{flex:1;min-height:120px;display:flex;justify-content:center;gap:6px;position:relative}
+.vfader{position:relative;width:26px;touch-action:none;cursor:ns-resize}
+.vfader::before{content:"";position:absolute;left:50%;top:10px;bottom:10px;width:4px;margin-left:-2px;background:var(--s3);border-radius:2px}
+.vfader .thumb{position:absolute;left:0;width:26px;height:20px;bottom:calc(var(--v) * (100% - 20px));background:linear-gradient(#5b6575,#3c4452);border:1px solid #6a7486;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.vfader .thumb::after{content:"";position:absolute;left:3px;right:3px;top:9px;height:2px;background:var(--text)}
+.vfader.dragging .thumb{border-color:var(--accent)}
+.scale{position:relative;width:18px;font-family:var(--font-num);font-size:9px;color:var(--faint)}
+.scale span{position:absolute;right:0;transform:translateY(50%);bottom:calc(10px + var(--p) * (100% - 20px))}
+canvas.meter{display:block}
+.fz canvas.meter{width:14px;height:100%}
+.db{font-family:var(--font-num);font-size:12px;text-align:center;color:var(--text)}
+.ms{display:flex;gap:4px;justify-content:center}
+.ms .tog{flex:1}
+.strip.master{border-top-color:var(--text);background:var(--s2);margin:10px 10px 10px 0;width:92px}
+.strip.master .chips{min-height:0}
+.add-strip{flex:none;width:92px;border:1.5px dashed var(--line);border-radius:var(--r);color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-weight:600}
+.add-strip:hover{color:var(--accent);border-color:var(--accent)}
+.add-strip span{font-size:28px;line-height:1}
+.pending{position:absolute;inset:0;background:rgba(21,25,31,.75);display:grid;place-items:center;border-radius:var(--r);font-size:12px;color:var(--muted);z-index:2}
+.spin{width:18px;height:18px;border:2px solid var(--s3);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{50%{opacity:.3}}
+
+/* ---------- mixer: phone rows ---------- */
+.rows{display:flex;flex-direction:column;gap:2px;padding:8px 0}
+.row{display:grid;grid-template-columns:4px 1fr;gap:10px;padding:8px 12px 10px 0;background:var(--s1);position:relative;cursor:pointer}
+.row .stripe{background:var(--tc);border-radius:0 2px 2px 0}
+.row>div{min-width:0}
+.row-top{display:flex;align-items:center;gap:8px;min-width:0;margin-bottom:6px}
+.row-top .kind{min-width:0}
+.row-top .nm{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-top .tog{height:34px;min-width:40px}
+.row-bot{display:flex;align-items:center;gap:10px}
+.hfader{position:relative;flex:1;height:40px;border-radius:6px;background:var(--s2);touch-action:pan-y;cursor:ew-resize;overflow:hidden}
+.hfader canvas.meter{position:absolute;left:8px;right:8px;top:50%;height:14px;margin-top:-7px;width:calc(100% - 16px)}
+.hfader .zero{position:absolute;top:6px;bottom:6px;width:1px;background:var(--faint);left:calc(8px + var(--z) * (100% - 16px))}
+.hfader .hthumb{position:absolute;top:4px;bottom:4px;width:14px;margin-left:-7px;left:calc(8px + var(--v) * (100% - 16px));border-radius:4px;background:linear-gradient(90deg,#5b6575,#3c4452);border:1px solid #6a7486;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+.hfader .hthumb::after{content:"";position:absolute;top:6px;bottom:6px;left:5px;width:2px;background:var(--text)}
+.hfader.dragging .hthumb{border-color:var(--accent)}
+.row-bot .db{width:62px;text-align:right;flex:none}
+.add-row{margin:10px 12px;padding:14px;border:1.5px dashed var(--line);border-radius:var(--r);color:var(--muted);font-weight:600;text-align:center}
+.mdock{display:flex;align-items:center;gap:10px;padding:8px 12px}
+.mdock .lbl{font-weight:700;font-size:12px;letter-spacing:.08em;width:56px}
+.mdock .db{width:62px;text-align:right}
+.landscape-note{font-size:12px;color:var(--muted)}
+
+/* ---------- empty state ---------- */
+.empty{max-width:520px;margin:48px auto;padding:0 16px;text-align:center;display:flex;flex-direction:column;gap:16px}
+.empty h2{margin:0;font-size:24px;text-wrap:balance}
+.empty p{margin:0;color:var(--muted)}
+.kindcards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.kindcard{background:var(--s1);border:1px solid var(--line);border-radius:10px;padding:16px;text-align:left;display:flex;flex-direction:column;gap:6px}
+.kindcard b{font-size:16px}
+.kindcard span{color:var(--muted);font-size:13px}
+.kindcard:hover,.kindcard[aria-pressed="true"]{border-color:var(--accent)}
+.kindcard svg{width:28px;height:28px;color:var(--accent)}
+
+/* ---------- track view ---------- */
+.trackview{display:flex;height:100%;min-height:0}
+.chainwrap{flex:1;overflow:auto;padding:16px;min-width:0}
+.chain{display:flex;align-items:stretch;gap:0;min-width:min-content}
+.io{flex:none;width:96px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:12px;color:var(--muted);font-size:12px}
+.io b{color:var(--text);font-size:13px;letter-spacing:.08em}
+.io .arrow{color:var(--faint);font-size:18px}
+.section{display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;border-left:1px dashed var(--line)}
+.section h3{margin:0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;padding-top:2px}
+.section .cards{display:flex;gap:10px;align-items:flex-start}
+.card{width:208px;background:var(--s1);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;position:relative;flex:none}
+.card.byp .macros,.card.byp .card-prog{opacity:.35}
+.card.byp .card-name{color:var(--muted)}
+.card-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 8px;border-bottom:1px solid var(--line)}
+.pwr{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;color:var(--accent);background:var(--s2);flex:none}
+.card.byp .pwr{color:var(--faint)}
+.card-name{flex:1;text-align:left;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:6px 0}
+.card-name small{display:block;font-weight:400;color:var(--faint);font-size:11px}
+.card-name:hover{color:var(--accent)}
+.handle{width:28px;height:30px;display:grid;place-items:center;color:var(--faint);cursor:grab;touch-action:none;flex:none}
+.card-prog{display:flex;align-items:center;gap:4px;padding:6px 8px 0}
+.card-prog button{height:28px}
+.card-prog .arr{width:28px;border-radius:5px;background:var(--s2);color:var(--muted)}
+.card-prog .pname{flex:1;text-align:left;font-size:13px;padding:0 6px;border-radius:5px;background:var(--s2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.macros{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 4px;padding:10px 6px}
+.macros .none{grid-column:1/-1;color:var(--faint);font-size:12px;text-align:center;padding:8px 0}
+.card.ghost{border-style:dashed;min-height:120px;display:grid;place-items:center;color:var(--muted);font-size:12px;text-align:center}
+.card.drag{z-index:5;box-shadow:0 12px 30px rgba(0,0,0,.6);border-color:var(--accent);transition:none}
+.addslot{flex:none;width:44px;align-self:stretch;min-height:120px;border:1.5px dashed var(--line);border-radius:var(--r);color:var(--muted);font-size:22px}
+.addslot:hover{color:var(--accent);border-color:var(--accent)}
+.inspector{flex:none;width:200px;border-left:1px solid var(--line);background:var(--s1);padding:12px;display:flex;flex-direction:column;gap:10px;overflow:auto}
+.inspector h4{margin:0;font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;font-weight:600}
+.insp-name{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}
+.insp-name i{width:12px;height:12px;border-radius:3px;background:var(--tc)}
+.swatches{display:flex;flex-wrap:wrap;gap:6px}
+.swatches button{width:22px;height:22px;border-radius:5px;background:var(--c)}
+.swatches button[aria-pressed="true"]{outline:2px solid var(--text);outline-offset:2px}
+.insp-mix{display:flex;gap:10px;align-items:stretch;height:200px}
+.insp-mix .fz{min-height:0}
+.insp-side{display:flex;flex-direction:column;justify-content:space-between;align-items:center}
+.route{font-size:13px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
+.route span{color:var(--muted)}
+.danger{color:var(--m-red);border:1px solid #5a2a2d;border-radius:6px;padding:8px;font-weight:600}
+.confirm{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.confirm .yes{background:var(--m-red);color:#fff;border-radius:6px;padding:6px 10px;font-weight:700}
+.confirm .no{border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.tdock{display:flex;align-items:center;gap:10px;padding:8px 12px}
+.tdock .db{width:62px;text-align:right}
+.tdock .tog{height:36px;min-width:40px}
+
+/* phone track view */
+.is-phone .chainwrap{padding:10px 10px 16px}
+.is-phone .chain{flex-direction:column;min-width:0}
+.is-phone .section{border-left:0;border-top:1px dashed var(--line);padding:10px 0 4px}
+.is-phone .section .cards{flex-direction:column;align-items:stretch}
+.is-phone .card{width:auto}
+.is-phone .io{width:auto;flex-direction:row;align-items:center;padding:4px 2px 10px}
+.is-phone .io .arrow{transform:rotate(90deg)}
+.is-phone .addslot{width:auto;min-height:44px;font-size:14px;font-weight:600}
+.is-phone .macros{grid-template-columns:repeat(4,1fr)}
+.card.collapsed .macros,.card.collapsed .card-prog{display:none}
+.card.collapsed .card-head{border-bottom:0}
+
+/* ---------- plugin view ---------- */
+.pluginview{display:flex;height:100%;min-height:0}
+.progs{flex:none;width:190px;border-right:1px solid var(--line);background:var(--s1);padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow:auto}
+.progs h4{margin:0 4px 6px;font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;font-weight:600}
+.progs button{text-align:left;padding:8px 10px;border-radius:6px;color:var(--muted)}
+.progs button[aria-current="true"]{background:var(--s2);color:var(--text);box-shadow:inset 3px 0 0 var(--accent)}
+.progs .pinbtn{margin-top:auto;border:1px solid var(--line);color:var(--text);text-align:center}
+.progs .pinbtn[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.pmain{flex:1;overflow:auto;min-width:0}
+.phead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--app);z-index:3}
+.phead .pn{font-size:20px;font-weight:700}
+.phead .pn small{font-size:12px;color:var(--faint);font-weight:400;margin-left:6px}
+.progstep{display:flex;align-items:center;gap:4px}
+.progstep .arr{width:36px;height:36px;border-radius:6px;background:var(--s2);color:var(--muted)}
+.progstep .pname{height:36px;padding:0 12px;border-radius:6px;background:var(--s2);min-width:120px;text-align:left;font-weight:600}
+.phead input{min-height:36px;width:180px}
+.phead canvas.meter{width:12px;height:36px}
+.pinhint{width:100%;font-size:13px;color:var(--accent)}
+.groups{padding:6px 16px 24px;display:flex;flex-direction:column;gap:18px}
+.group h5{margin:10px 0 10px;font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;font-weight:600;display:flex;align-items:center;gap:10px}
+.group h5::after{content:"";flex:1;height:1px;background:var(--line)}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:14px 8px}
+.is-phone .pgrid{grid-template-columns:1fr 1fr;gap:18px 8px}
+.pctl{display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:center}
+.pctl .lab{font-size:12px;color:var(--muted)}
+.bigtog{min-width:64px;height:40px;border-radius:6px;background:var(--s3);color:var(--muted);font-weight:700}
+.bigtog.on{background:var(--accent);color:var(--accent-ink)}
+.stepper{display:flex;align-items:center;gap:4px}
+.stepper button{width:36px;height:40px;border-radius:6px;background:var(--s2);font-size:18px;color:var(--muted)}
+.stepper .sv{min-width:60px;text-align:center;font-family:var(--font-num);font-size:13px}
+.outval{font-family:var(--font-num);font-size:16px;padding:10px 0}
+.prop{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.prop input{flex:1;min-width:160px}
+.prop .ghost-btn{min-height:40px}
+
+/* ---------- sheets ---------- */
+.scrim{position:absolute;inset:0;background:rgba(5,7,10,.6);z-index:20;display:flex;align-items:center;justify-content:center;padding:16px}
+.sheet{background:var(--s1);border:1px solid var(--line);border-radius:12px;width:min(560px,100%);max-height:100%;display:flex;flex-direction:column;overflow:hidden}
+.is-phone .scrim{align-items:flex-end;padding:0}
+.is-phone .sheet{border-radius:14px 14px 0 0;max-height:92%;width:100%;padding-bottom:env(safe-area-inset-bottom,0px)}
+.sheet-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.sheet-h h2{margin:0;font-size:17px;flex:1}
+.sheet-h .x{width:36px;height:36px;border-radius:8px;background:var(--s2);color:var(--muted)}
+.sheet-b{padding:16px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.sheet-f{padding:12px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.primary{background:var(--accent);color:var(--accent-ink);font-weight:700;border-radius:8px;padding:10px 18px;min-height:44px}
+.secondary{border:1px solid var(--line);border-radius:8px;padding:10px 18px;min-height:44px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field>span{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.fieldrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.is-phone .fieldrow{grid-template-columns:1fr}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opts button{padding:8px 12px;border-radius:6px;background:var(--s2);border:1px solid var(--line);color:var(--muted);min-height:40px}
+.opts button[aria-pressed="true"]{border-color:var(--accent);color:var(--text)}
+.plist{display:flex;flex-direction:column;gap:2px}
+.plist h6{margin:10px 0 4px;font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;font-weight:600}
+.pitem{display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;text-align:left}
+.pitem:hover{background:var(--s2)}
+.pitem .t{flex:1;min-width:0}
+.pitem .t small{display:block;color:var(--faint);font-family:var(--font-num);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{font-size:10px;letter-spacing:.08em;padding:2px 6px;border-radius:4px;background:var(--s3);color:var(--muted);text-transform:uppercase;flex:none}
+.example{font-size:11px;color:var(--faint)}
+.focus{display:flex;flex-direction:column;gap:16px;padding:8px 0 4px}
+.focus .big{font-family:var(--font-num);font-size:34px;text-align:center}
+.focus .hfader{height:64px}
+.focus .hint{display:flex;justify-content:space-between;color:var(--faint);font-size:12px}
+.toast{position:absolute;left:50%;bottom:80px;transform:translateX(-50%);background:var(--text);color:var(--app);padding:10px 16px;border-radius:8px;font-weight:600;z-index:30;white-space:nowrap}
+.tracklist .pitem i{width:10px;height:28px;border-radius:3px;background:var(--tc)}
+
+@media (prefers-reduced-motion: reduce){ .spin,.conn.lost{animation:none} }
+@media (max-width:600px){ body{padding-block:8px} .caption{display:none} .frame.auto{height:calc(100dvh - 120px)} }
+</style>
+
+<div class="bench">
+  <div class="bench-bar">
+    <div class="bench-title">Sushi WebUI <small>interactive UX sketch · simulated engine</small></div>
+    <div class="seg" role="group" aria-label="Device" id="devseg">
+      <button id="dev-auto" data-dev="auto">Fit</button>
+      <button id="dev-desk" data-dev="desktop">Desktop</button>
+      <button id="dev-tab" data-dev="tablet">Tablet</button>
+      <button id="dev-ph" data-dev="phone">Phone</button>
+      <button id="dev-phl" data-dev="phoneL">Phone ⟲</button>
+    </div>
+    <label for="scen">Scenario
+      <select id="scen">
+        <option value="live">Live rig · 5 tracks</option>
+        <option value="empty">New project · empty</option>
+        <option value="stress">Stress · 24 tracks</option>
+      </select>
+    </label>
+    <button class="ghost-btn" id="disc">Simulate disconnect</button>
+  </div>
+  <p class="caption" id="caption"></p>
+  <div class="stage" id="stage">
+    <div class="frame auto" id="frame"><div id="app"></div></div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+// ---------------------------------------------------------------- helpers
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PALETTE = ['#e0a33a','#5aa0d8','#c9719a','#58b38b','#9b86d9','#d9734e','#4fb3b8','#b8b04f'];
+
+// fader law (see UX_DESIGN §7)
+function posFromDb(db){
+  if (db >= 0) return 0.75 + 0.25 * Math.min(db, 24) / 24;
+  if (db >= -20) return 0.30 + 0.45 * (db + 20) / 20;
+  if (db >= -60) return 0.05 + 0.25 * (db + 60) / 40;
+  return 0.05 * Math.max(0, db + 120) / 60;
+}
+function dbFromPos(p){
+  if (p >= 0.75) return (p - 0.75) / 0.25 * 24;
+  if (p >= 0.30) return (p - 0.30) / 0.45 * 20 - 20;
+  if (p >= 0.05) return (p - 0.05) / 0.25 * 40 - 60;
+  return p / 0.05 * 60 - 120;
+}
+const fmtDb = db => db <= -119.5 ? '−∞ dB' : (db > 0 ? '+' : db < 0 ? '−' : '') + Math.abs(db).toFixed(1) + ' dB';
+const fmtPan = p => Math.abs(p) < 0.005 ? 'C' : (p < 0 ? 'L ' : 'R ') + Math.round(Math.abs(p) * 100);
+
+// ---------------------------------------------------------------- plugin templates
+// param: {id,label,kind:'float'|'int'|'bool'|'enum'|'out',min,max,unit,def,log,group,opts}
+const F = (id, label, min, max, unit, def, o = {}) => ({id, label, kind:'float', min, max, unit, def, ...o});
+const I = (id, label, min, max, unit, def, o = {}) => ({id, label, kind:'int', min, max, unit, def, ...o});
+const B = (id, label, def, o = {}) => ({id, label, kind:'bool', min:0, max:1, def: def ? 1 : 0, ...o});
+const E = (id, label, opts, def, o = {}) => ({id, label, kind:'enum', min:0, max:opts.length - 1, opts, def, ...o});
+const O = (id, label, text, o = {}) => ({id, label, kind:'out', text, ...o});
+
+const TPL = {
+  gate:   {name:'Noise Gate', uid:'sushi.brickworks.noise_gate', type:'internal', role:'audio_fx', params:[
+            F('threshold','Threshold',-80,0,'dB',-52), F('attack','Attack',0.1,100,'ms',1,{log:1}), F('hold','Hold',0,1000,'ms',40), F('release','Release',1,1000,'ms',120,{log:1})]},
+  drive:  {name:'Drive', uid:'sushi.brickworks.drive', type:'internal', role:'audio_fx', params:[
+            F('drive','Drive',0,1,'',0.62), F('bias','Bias',0,1,'',0.3), F('tone','Tone',0,1,'',0.55), F('volume','Volume',-30,12,'dB',-4)]},
+  cab:    {name:'Cab Sim', uid:'sushi.brickworks.cab_sim', type:'internal', role:'audio_fx', params:[
+            F('cutoff_low','Low cut',20,500,'Hz',90,{log:1}), F('cutoff_high','High cut',1000,20000,'Hz',5200,{log:1}), F('tone','Tone',0,1,'',0.5)]},
+  reverb: {name:'Freeverb', uid:'sushi.testing.freeverb', type:'internal', role:'audio_fx', params:[
+            F('room_size','Room size',0,1,'',0.62), F('damping','Damping',0,1,'',0.4), F('width','Width',0,1,'',1), F('dry','Dry',0,1,'',1), F('wet','Wet',0,1,'',0.22), B('freeze','Freeze',0)]},
+  comp:   {name:'Compressor', uid:'sushi.brickworks.compressor', type:'internal', role:'audio_fx', params:[
+            F('threshold','Threshold',-60,0,'dB',-18,{group:'Detector'}), F('ratio','Ratio',1,20,':1',4,{group:'Detector',log:1}),
+            F('attack','Attack',0.1,100,'ms',8,{log:1,group:'Timing'}), F('release','Release',10,2000,'ms',180,{log:1,group:'Timing'}),
+            F('gain','Makeup',0,24,'dB',4,{group:'Output'}), O('gr','Gain reduction','−3.4 dB',{group:'Output'})]},
+  eq3:    {name:'EQ 3-band', uid:'sushi.brickworks.eq3band', type:'internal', role:'audio_fx', params:[
+            F('low_gain','Low',-20,20,'dB',2,{group:'Low'}), F('low_freq','Low freq',20,1000,'Hz',120,{log:1,group:'Low'}),
+            F('mid_gain','Mid',-20,20,'dB',-3,{group:'Mid'}), F('mid_freq','Mid freq',200,8000,'Hz',800,{log:1,group:'Mid'}), F('mid_q','Mid Q',0.1,10,'',0.9,{log:1,group:'Mid'}),
+            F('high_gain','High',-20,20,'dB',1.5,{group:'High'}), F('high_freq','High freq',1000,20000,'Hz',6000,{log:1,group:'High'})]},
+  chorus: {name:'Chorus', uid:'sushi.brickworks.chorus', type:'internal', role:'audio_fx', params:[
+            F('rate','Rate',0.01,2,'Hz',0.4,{log:1}), F('amount','Amount',0,1,'',0.5)]},
+  delay:  {name:'Comb Delay', uid:'sushi.brickworks.comb_delay', type:'internal', role:'audio_fx', params:[
+            F('ff_delay','Delay',0,1000,'ms',375), F('fb_gain','Feedback',0,0.95,'',0.35), F('blend','Mix',0,1,'',0.25)]},
+  arp:    {name:'Arpeggiator', uid:'sushi.testing.arpeggiator', type:'internal', role:'midi_fx', params:[
+            I('range','Range',1,5,'oct',2), B('hold','Hold',1)]},
+  transp: {name:'Transposer', uid:'sushi.testing.transposer', type:'internal', role:'midi_fx', params:[
+            I('transpose','Transpose',-24,24,'st',0)]},
+  synth:  {name:'Simple Synth', uid:'sushi.brickworks.simple_synth', type:'internal', role:'instrument',
+           programs:['Init','Warm Pad','Bright Lead','Pluck','Sub Bass'], params:[
+            F('volume','Volume',-60,0,'dB',-8,{group:'Voice'}), F('portamento','Glide',0,1000,'ms',0,{group:'Voice'}), F('pulse_width','Pulse width',0,1,'',0.5,{group:'Voice'}),
+            F('filter_cutoff','Cutoff',20,20000,'Hz',1200,{log:1,group:'Filter'}), F('filter_Q','Resonance',0.5,10,'',1.4,{log:1,group:'Filter'}),
+            F('attack','Attack',0,1000,'ms',120,{group:'Envelope'}), F('decay','Decay',0,1000,'ms',400,{group:'Envelope'}), F('sustain','Sustain',0,1,'',0.7,{group:'Envelope'}), F('release','Release',0,1000,'ms',600,{group:'Envelope'})]},
+  sampler:{name:'Sample Player', uid:'sushi.testing.sampleplayer', type:'internal', role:'instrument', props:[{id:'sample_file',label:'Sample file',value:'samples/Rhodes_C3.wav'}], params:[
+            F('volume','Volume',-120,36,'dB',0), F('attack','Attack',0,10,'s',0.01), F('decay','Decay',0,10,'s',0.3), F('sustain','Sustain',0,1,'',0.8), F('release','Release',0,10,'s',0.6)]},
+  // examples of scanned third-party plugins (catalog entries, see ARCHITECTURE §4.9)
+  dexed:  {name:'Dexed', uid:'Dexed', path:'/home/mind/.vst3/Dexed.vst3', type:'vst3', role:'instrument', vendor:'Digital Suburban',
+           programs:['BRASS 1','STRINGS 1','E.PIANO 1','BASS 1','MARIMBA','HARPSICH 1','TUB BELLS','SYN-LEAD 1'], params:[
+            F('cutoff','Cutoff',0,1,'',0.8,{group:'Filter'}), F('resonance','Resonance',0,1,'',0.1,{group:'Filter'}), F('output','Output',0,1,'',0.7,{group:'Master'}), I('transpose','Transpose',-24,24,'st',0,{group:'Master'}),
+            E('algorithm','Algorithm',Array.from({length:32},(_,i)=>'Alg '+(i+1)),4,{group:'Voice'}), F('feedback','Feedback',0,7,'',3,{group:'Voice'}), F('lfo_speed','LFO speed',0,99,'',35,{group:'LFO'}), F('lfo_pmd','LFO pitch',0,99,'',0,{group:'LFO'})]},
+  tube:   {name:'GxTubeScreamer', uid:'http://guitarix.sourceforge.net/plugins/gx_tubescreamer#ts9', path:'/usr/lib/lv2/gx_ts9.lv2', type:'lv2', role:'audio_fx', vendor:'Guitarix',
+           params:[F('drive','Drive',0,1,'',0.5), F('tone','Tone',0,1,'',0.5), F('level','Level',-20,4,'dB',-6)]},
+  dragon: {name:'Dragonfly Room Reverb', uid:'urn:dragonfly:room', path:'/usr/lib/lv2/DragonflyRoomReverb.lv2', type:'lv2', role:'audio_fx', vendor:'Michael Willis',
+           programs:['Small Room','Medium Room','Large Room','Bright Room','Vocal Booth'], params:[
+            F('dry','Dry',0,100,'%',80), F('early','Early',0,100,'%',10), F('late','Late',0,100,'%',20), F('size','Size',8,32,'m',12), F('decay','Decay',0.1,10,'s',1.2,{log:1}), F('diffuse','Diffuse',0,100,'%',70)]},
+  surge:  {name:'Surge XT', uid:'Surge XT', path:'/home/mind/.vst3/Surge XT.vst3', type:'vst3', role:'instrument', vendor:'Surge Synth Team',
+           programs:['Init Saw','Pad – Glass','Lead – Hoover','Bass – Reese','Keys – Rhodes'], params:[
+            F('a_macro_1','Macro 1',0,1,'',0.5,{group:'Macros'}), F('a_macro_2','Macro 2',0,1,'',0.2,{group:'Macros'}), F('a_macro_3','Macro 3',0,1,'',0.0,{group:'Macros'}), F('a_macro_4','Macro 4',0,1,'',0.7,{group:'Macros'}),
+            F('volume','Volume',-48,0,'dB',-6,{group:'Global'})]},
+};
+const CATALOG = [
+  ...['arp','transp'].map(k => ({k})),
+  ...['synth','sampler','dexed','surge'].map(k => ({k})),
+  ...['gate','comp','eq3','drive','cab','chorus','delay','reverb','tube','dragon'].map(k => ({k})),
+];
+for (const t of Object.values(TPL)) for (const p of t.params) if (p.kind !== 'out') p.defN = toNorm(p, p.def);
+
+function toNorm(p, d){
+  if (p.log) return Math.log(Math.max(d, p.min) / p.min) / Math.log(p.max / p.min);
+  return (d - p.min) / (p.max - p.min);
+}
+function fromNorm(p, n){
+  if (p.log) return p.min * Math.pow(p.max / p.min, n);
+  return p.min + n * (p.max - p.min);
+}
+function quantize(p, n){
+  if (p.kind === 'int' || p.kind === 'enum') { const steps = p.max - p.min; return Math.round(n * steps) / steps; }
+  if (p.kind === 'bool') return n >= 0.5 ? 1 : 0;
+  return n;
+}
+function fmtParam(p, n){                    // stands in for Sushi's formatted_value
+  if (p.kind === 'out') return p.text;
+  if (p.kind === 'bool') return n >= 0.5 ? 'On' : 'Off';
+  const d = fromNorm(p, n);
+  if (p.kind === 'enum') return p.opts[Math.round(d)];
+  if (p.kind === 'int') return (p.unit === 'st' && d > 0 ? '+' : '') + Math.round(d) + (p.unit ? ' ' + p.unit : '');
+  if (p.unit === 'Hz') return d >= 1000 ? (d / 1000).toFixed(d >= 10000 ? 1 : 2) + ' kHz' : Math.round(d) + ' Hz';
+  if (p.unit === 'dB') return (d > 0.05 ? '+' : '') + d.toFixed(1) + ' dB';
+  if (p.unit === 'ms') return (d < 10 ? d.toFixed(1) : Math.round(d)) + ' ms';
+  if (p.unit === 's') return d.toFixed(2) + ' s';
+  if (p.unit === '%') return Math.round(d) + ' %';
+  if (p.unit === ':1') return d.toFixed(1) + ':1';
+  if (p.unit === 'm') return d.toFixed(1) + ' m';
+  return d.toFixed(2);
+}
+
+let uidc = 1;
+function inst(k, over = {}){
+  const tpl = TPL[k];
+  const v = {};
+  for (const p of tpl.params) if (p.kind !== 'out') v[p.id] = p.defN;
+  const macros = tpl.params.filter(p => p.kind === 'float').slice(0, 3).map(p => p.id);
+  return {id: uidc++, k, tpl, name: tpl.name, bypass:false, program: tpl.programs ? 1 : -1, v, macros, collapsed:false, props:(tpl.props||[]).map(x=>({...x})), ...over};
+}
+
+// ---------------------------------------------------------------- state
+const S = {
+  device: 'auto', size: 'desktop',
+  route: {view:'mixer', t:0, p:0},
+  sheet: null, confirm: null, pinMode: false, search: '',
+  tracks: [], master: null,
+  playing: true, tempo: 120, cpu: 0.21, conn: 'ok', dirty: true, toast: null,
+  project: 'Live Rig',
+};
+function mkTrack(name, kind, chain, o = {}){
+  return {id: uidc++, name, kind, chain, gain: 0, pan: 0, mute: false, solo: false, color: PALETTE[0],
+    channels: kind === 'midi' ? 2 : 1, input: kind === 'midi' ? 'MIDI port 0 · Omni' : 'In 1', output: 'Out 1-2',
+    gen: {base: -18, vary: 6, beat: 0}, ...o};
+}
+function scenario(name){
+  uidc = 1;
+  S.master = mkTrack('Master', 'master', [], {gain: -0.5, channels: 2, input: 'all tracks', color:'#e7e9ee'});
+  if (name === 'empty') { S.tracks = []; S.project = 'Untitled'; }
+  else if (name === 'stress') {
+    S.project = 'Stress test';
+    S.tracks = Array.from({length: 24}, (_, i) => {
+      const midi = i % 3 === 2;
+      return mkTrack(`Ch ${i + 1}`, midi ? 'midi' : 'audio', midi ? [inst('synth'), inst('reverb')] : [inst('comp'), inst('eq3')],
+        {color: PALETTE[i % 8], gain: -2 - (i % 5), input: midi ? 'MIDI port 0 · ch ' + (i % 16 + 1) : `In ${i % 8 + 1}`, gen:{base:-22 + (i % 4) * 3, vary: 7, beat: i % 4 === 0 ? 1 : 0}});
+    });
+  } else {
+    S.project = 'Live Rig';
+    S.tracks = [
+      mkTrack('Guitar', 'audio', [inst('gate'), inst('drive'), inst('cab'), inst('reverb')], {color:PALETTE[0], gain:-3.5, pan:-0.2, input:'In 1', gen:{base:-14, vary:8, beat:0}}),
+      mkTrack('Vocal', 'audio', [inst('comp'), inst('eq3'), inst('reverb', {name:'Plate'})], {color:PALETTE[1], gain:0, input:'In 2', gen:{base:-17, vary:9, beat:0}}),
+      mkTrack('Synth', 'midi', [inst('arp'), inst('synth'), inst('chorus'), inst('reverb')], {color:PALETTE[2], gain:-8, pan:0.15, gen:{base:-12, vary:5, beat:0.5}}),
+      mkTrack('Keys', 'midi', [inst('sampler'), inst('eq3')], {color:PALETTE[3], gain:-6, input:'MIDI port 1 · ch 2', gen:{base:-20, vary:7, beat:0}}),
+      mkTrack('Drums', 'audio', [inst('comp'), inst('eq3')], {color:PALETTE[4], gain:-1.2, channels:2, input:'In 3-4', gen:{base:-30, vary:3, beat:1}}),
+    ];
+    S.tracks[1].chain[2].bypass = true;
+    S.tracks[0].chain[0].collapsed = true;
+  }
+  S.route = {view:'mixer', t:0, p:0}; S.sheet = null; S.confirm = null;
+  meters.clear();
+}
+
+// ---------------------------------------------------------------- controls registry
+const trk = i => i === 'm' ? S.master : S.tracks[+i];
+function ctl(key){
+  const [k, a, b, c] = key.split(':');
+  if (k === 't') {
+    const tr = trk(a);
+    if (b === 'gain') return {get: () => posFromDb(tr.gain), set: v => { tr.gain = Math.abs(dbFromPos(v)) < 0.25 ? 0 : dbFromPos(v); }, def: posFromDb(0), fmt: () => fmtDb(tr.gain), label:'Gain'};
+    if (b === 'pan') return {get: () => (tr.pan + 1) / 2, set: v => { let p = v * 2 - 1; tr.pan = Math.abs(p) < 0.02 ? 0 : p; }, def: 0.5, fmt: () => fmtPan(tr.pan), bipolar: true, label:'Pan'};
+  }
+  if (k === 'p') {
+    const it = trk(a).chain[+b]; const p = it.tpl.params.find(x => x.id === c);
+    return {get: () => it.v[c], set: v => { it.v[c] = quantize(p, v); }, def: p.defN, fmt: () => fmtParam(p, it.v[c]), label: p.label, bipolar: p.min < 0 && p.max > 0 && p.unit !== 'dB' || (p.unit === 'dB' && p.min < 0 && p.max > 0 && p.max === -p.min)};
+  }
+  if (k === 'x') return {get: () => (S.tempo - 20) / 280, set: v => { S.tempo = Math.round((20 + v * 280) * 10) / 10; }, def: 100 / 280, fmt: () => S.tempo.toFixed(1)};
+}
+function refresh(key){
+  const c = ctl(key); const v = c.get();
+  document.querySelectorAll(`[data-ctl="${key}"]`).forEach(el => paint(el, v, c));
+  document.querySelectorAll(`[data-val="${key}"]`).forEach(el => { el.textContent = c.fmt(); });
+}
+const C = 2 * Math.PI * 40, SWEEP = 0.75 * C;
+function paint(el, v, c){
+  el.style.setProperty('--v', v);
+  el.setAttribute('aria-valuenow', c.fmt());
+  if (el.classList.contains('knob')) {
+    const val = el.querySelector('.val'), ind = el.querySelector('.ind');
+    let start = 135, len = v * SWEEP;
+    if (c.bipolar) { if (v >= 0.5) { start = 270; len = (v - 0.5) * SWEEP; } else { start = 135 + 270 * v; len = (0.5 - v) * SWEEP; } }
+    val.setAttribute('stroke-dasharray', `${Math.max(len, 0.001)} ${C}`);
+    val.setAttribute('transform', `rotate(${start} 50 50)`);
+    ind.setAttribute('transform', `rotate(${135 + 270 * v - 270} 50 50)`);
+  }
+}
+
+// ---------------------------------------------------------------- html fragments
+const ICON = {
+  power:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>',
+  play:'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l15 8-15 8z"/></svg>',
+  stop:'<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>',
+  back:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  grip:'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+  mixer:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v18M12 3v18M18 3v18"/><rect x="3.5" y="13" width="5" height="3" rx="1" fill="currentColor"/><rect x="9.5" y="7" width="5" height="3" rx="1" fill="currentColor"/><rect x="15.5" y="15" width="5" height="3" rx="1" fill="currentColor"/></svg>',
+  tracks:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>',
+  proj:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  audio:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2M7 8v8M11 4v16M15 7v10M19 10v4M21 12h0"/></svg>',
+  midi:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M7.5 5v8M12 5v8M16.5 5v8" /><path d="M5.5 13h4M10 13h4M14.5 13h4" stroke-width="0"/></svg>',
+};
+function knob(key, size = 44, label = null, extra = ''){
+  const c = ctl(key);
+  return `<div class="knob ${extra}" data-ctl="${key}" data-type="knob" role="slider" tabindex="0" aria-label="${esc(label || c.label)}" style="width:${Math.max(size, 56)}px">
+    <svg width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="trk" cx="50" cy="50" r="40" fill="none" stroke-width="9" stroke-dasharray="${SWEEP} ${C}" transform="rotate(135 50 50)" stroke-linecap="round"/>
+      <circle class="val" cx="50" cy="50" r="40" fill="none" stroke-width="9" stroke-linecap="round"/>
+      <circle class="cap" cx="50" cy="50" r="28" stroke-width="2"/>
+      <line class="ind" x1="50" y1="50" x2="50" y2="28"/>
+    </svg>
+    ${label !== '' ? `<span class="lab">${esc(label || c.label)}</span>` : ''}
+    <span class="v" data-val="${key}">${esc(c.fmt())}</span></div>`;
+}
+function vfader(ti){
+  const key = `t:${ti}:gain`;
+  const ticks = [12, 6, 0, -6, -12, -20, -40, -60].map(d => `<span style="--p:${posFromDb(d)}">${d > 0 ? '+' + d : d}</span>`).join('');
+  return `<div class="fz"><div class="scale" aria-hidden="true">${ticks}</div>
+    <div class="vfader" data-ctl="${key}" data-type="vfader" role="slider" tabindex="0" aria-label="Gain"><div class="thumb"></div></div>
+    <canvas class="meter" data-meter="${ti}" data-orient="v"></canvas></div>`;
+}
+function hfader(ti, extraCls = ''){
+  const key = `t:${ti}:gain`;
+  return `<div class="hfader ${extraCls}" data-ctl="${key}" data-type="hfader" role="slider" tabindex="0" aria-label="Gain" style="--z:${posFromDb(0)}">
+    <canvas class="meter" data-meter="${ti}" data-orient="h"></canvas><div class="zero"></div><div class="hthumb"></div></div>`;
+}
+const ms = (ti, master) => `<div class="ms"><button class="tog m ${trk(ti).mute ? 'on' : ''}" data-act="mute:${ti}" aria-pressed="${trk(ti).mute}">M</button>${master ? '' : `<button class="tog s ${trk(ti).solo ? 'on' : ''}" data-act="solo:${ti}" aria-pressed="${trk(ti).solo}">S</button>`}</div>`;
+const kindLabel = t => t.kind === 'midi' ? `<b>MIDI</b> · ${esc(t.input.replace('MIDI ', ''))}` : t.kind === 'audio' ? `<b>AUDIO</b> · ${esc(t.input)}` : `<b>POST</b> · Out 1-2`;
+const ROLE_LABEL = {midi_fx:'MIDI effects', instrument:'Instrument', audio_fx:'Audio effects'};
+
+// ---------------------------------------------------------------- views
+function topbar(){
+  const r = S.route, phone = S.size === 'phone';
+  const masterClip = meters.get('m')?.clip;
+  const tr = S.tracks[r.t], pl = tr?.chain[r.p];
+  const trans = `<div class="transport">
+      ${phone ? '' : `<div class="tempo num" data-ctl="x:tempo" data-type="num" role="slider" tabindex="0" aria-label="Tempo"><span data-val="x:tempo">${S.tempo.toFixed(1)}</span><small>BPM</small></div>`}
+      <button class="tbtn ${S.playing ? 'on' : ''}" data-act="play" aria-label="Play">${ICON.play}</button>
+      ${phone ? '' : `<button class="tbtn" data-act="stop" aria-label="Stop">${ICON.stop}</button>`}
+    </div>
+    <span class="cpu num" id="cpu">${Math.round(S.cpu * 100)}%${phone ? '' : ' CPU'}</span>
+    <span class="conn ${S.conn !== 'ok' ? 'lost' : ''}" title="${S.conn === 'ok' ? 'Connected to Sushi' : 'Reconnecting'}"></span>`;
+  if (phone) {
+    let left;
+    if (r.view === 'mixer') left = `<div class="proj ptitle">${esc(S.project)}${S.dirty ? '<span class="dirty"></span>' : ''}${masterClip ? '<span class="clipdot"></span>' : ''}</div>`;
+    else if (r.view === 'track') left = `<button class="backbtn" data-go="mixer">${ICON.back}Mixer</button><div class="ptitle">${esc(tr.name)}</div>`;
+    else left = `<button class="backbtn" data-go="track:${r.t}">${ICON.back}${esc(tr.name)}</button>`;
+    return `<header class="topbar">${left}<div class="spacer"></div>${trans}</header>`;
+  }
+  const crumbs = [`<button data-go="mixer" class="${r.view === 'mixer' ? 'here' : ''}">Mixer</button>`];
+  if (r.view !== 'mixer') crumbs.push(`<span class="sep">›</span><button data-go="track:${r.t}" class="${r.view === 'track' ? 'here' : ''}">${esc(tr.name)}</button>`);
+  if (r.view === 'plugin') crumbs.push(`<span class="sep">›</span><span class="here">${esc(pl.name)}</span>`);
+  return `<header class="topbar"><button class="proj" data-sheet="project">${esc(S.project)}${S.dirty ? '<span class="dirty" title="Unsaved changes"></span>' : ''}${masterClip ? '<span class="clipdot" title="Master clipped"></span>' : ''}</button>
+    <span class="sep" style="color:var(--faint)">/</span><nav class="crumbs">${crumbs.join('')}</nav><div class="spacer"></div>${trans}</header>`;
+}
+
+function chips(t, ti){
+  const vis = t.chain.slice(0, 3).map((p, pi) => `<button class="chip ${p.bypass ? 'byp' : ''}" data-go="plugin:${ti}:${pi}">${esc(p.name)}</button>`).join('');
+  return `<div class="chips">${vis}${t.chain.length > 3 ? `<button class="chip more" data-go="track:${ti}">+${t.chain.length - 3} more</button>` : ''}${t.chain.length === 0 ? '<span class="chip more">no plugins</span>' : ''}</div>`;
+}
+function strip(t, ti){
+  return `<div class="strip" style="--tc:${t.color}">
+    <button class="strip-name" data-go="track:${ti}">${esc(t.name)}</button>
+    <div class="kind">${kindLabel(t)}</div>
+    ${chips(t, ti)}
+    ${knob(`t:${ti}:pan`, 36, '')}
+    ${vfader(ti)}
+    <div class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</div>
+    ${ms(ti)}
+    ${t.pending ? '<div class="pending"><div><div class="spin"></div>Creating…</div></div>' : ''}
+  </div>`;
+}
+function mixerView(){
+  if (S.size === 'phone') {
+    if (!S.tracks.length) return emptyView();
+    const rows = S.tracks.map((t, ti) => `<div class="row" data-row="${ti}" style="--tc:${t.color}"><div class="stripe"></div><div>
+        <div class="row-top"><span class="nm">${esc(t.name)}</span><span class="kind">${kindLabel(t)}</span><div class="spacer"></div>${ms(ti).replace('<div class="ms">', '').replace(/<\/div>$/, '')}</div>
+        <div class="row-bot">${hfader(ti)}<span class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</span></div></div>
+        ${t.pending ? '<div class="pending"><div><div class="spin"></div>Creating…</div></div>' : ''}</div>`).join('');
+    return `<div class="rows">${rows}<button class="add-row" data-sheet="addTrack">＋ Add track</button></div>`;
+  }
+  const body = S.tracks.length ? S.tracks.map(strip).join('') + `<button class="add-strip" data-sheet="addTrack"><span>＋</span>Add track</button>`
+    : `<div style="flex:1">${emptyView()}</div>`;
+  return `<div class="mixer"><div class="strips" id="strips">${body}</div>
+    <div class="strip master" style="--tc:var(--text)"><button class="strip-name" disabled>Master</button><div class="kind"><b>POST</b> · Out 1-2</div>
+    ${knob('t:m:pan', 36, '')}${vfader('m')}<div class="db" data-val="t:m:gain">${fmtDb(S.master.gain)}</div>${ms('m', true)}</div></div>`;
+}
+function emptyView(){
+  return `<div class="empty"><h2>Start with a track</h2><p>Sushi is running with no tracks. Pick what you want to play through it.</p>
+    <div class="kindcards">
+      <button class="kindcard" data-addkind="audio">${ICON.audio}<b>Audio track</b><span>Guitar, mic or line input through effects</span></button>
+      <button class="kindcard" data-addkind="midi">${ICON.midi}<b>MIDI track</b><span>A synth or sampler played from a keyboard</span></button>
+    </div></div>`;
+}
+function mixerDockPhone(){
+  return `<div class="dock"><div class="mdock"><span class="lbl">MASTER</span>${hfader('m')}<span class="db num" data-val="t:m:gain">${fmtDb(S.master.gain)}</span>
+    <button class="tog m ${S.master.mute ? 'on' : ''}" data-act="mute:m" style="height:36px;min-width:40px">M</button></div></div>`;
+}
+
+function card(t, ti, p, pi){
+  const progs = p.tpl.programs;
+  const prog = progs ? `<div class="card-prog"><button class="arr" data-act="prog:${ti}:${pi}:-1" aria-label="Previous program">‹</button>
+      <button class="pname" data-sheet="programs:${ti}:${pi}">${esc(progs[p.program])}</button><button class="arr" data-act="prog:${ti}:${pi}:1" aria-label="Next program">›</button></div>` : '';
+  const mac = p.macros.length ? p.macros.map(id => knob(`p:${ti}:${pi}:${id}`, S.size === 'phone' ? 40 : 38)).join('') : '<div class="none">No pinned controls</div>';
+  const sub = p.tpl.type === 'internal' ? '' : `<small>${p.tpl.type.toUpperCase()}</small>`;
+  return `<div class="card ${p.bypass ? 'byp' : ''} ${S.size === 'phone' && p.collapsed ? 'collapsed' : ''}" data-card="${pi}">
+    <div class="card-head"><button class="pwr" data-act="bypass:${ti}:${pi}" aria-pressed="${!p.bypass}" aria-label="Bypass ${esc(p.name)}">${ICON.power}</button>
+      <button class="card-name" ${S.size === 'phone' ? `data-act="collapse:${ti}:${pi}"` : `data-go="plugin:${ti}:${pi}"`}>${esc(p.name)}${sub}</button>
+      ${S.size === 'phone' ? `<button class="pwr" data-go="plugin:${ti}:${pi}" aria-label="Open ${esc(p.name)}" style="color:var(--text)">›</button>` : ''}
+      <span class="handle" data-drag="${ti}:${pi}" aria-label="Drag to reorder">${ICON.grip}</span></div>
+    ${prog}<div class="macros">${mac}</div></div>`;
+}
+function sectionsFor(t){
+  return t.kind === 'midi' ? ['midi_fx', 'instrument', 'audio_fx'] : ['audio_fx'];
+}
+function trackView(){
+  const ti = S.route.t, t = S.tracks[ti];
+  const phone = S.size === 'phone';
+  const secs = sectionsFor(t).map(sec => {
+    const items = t.chain.map((p, pi) => [p, pi]).filter(([p]) => p.tpl.role === sec);
+    const cards = items.map(([p, pi]) => card(t, ti, p, pi)).join('');
+    const ghost = S.pendingPlugin && S.pendingPlugin.t === ti && S.pendingPlugin.sec === sec ? `<div class="card ghost"><div><div class="spin"></div>Loading ${esc(TPL[S.pendingPlugin.k].name)}…</div></div>` : '';
+    const full = sec === 'instrument' && items.length >= 1;
+    const add = full ? '' : `<button class="addslot" data-sheet="browse:${ti}:${sec}" aria-label="Add ${ROLE_LABEL[sec]}">${phone ? '＋ Add ' + (sec === 'instrument' ? 'instrument' : sec === 'midi_fx' ? 'MIDI effect' : 'effect') : '＋'}</button>`;
+    return `<div class="section" data-sec="${sec}"><h3>${ROLE_LABEL[sec]}</h3><div class="cards">${cards}${ghost}${add}</div></div>`;
+  }).join('');
+  const io = `<div class="io"><b>${t.kind === 'midi' ? 'MIDI IN' : 'AUDIO IN'}</b><span>${esc(t.input)}</span><span class="arrow">→</span></div>`;
+  const out = `<div class="io"><span class="arrow">→</span><b>OUT</b><span>${esc(t.output)}</span></div>`;
+  const chain = `<div class="chainwrap" id="chainwrap"><div class="chain">${io}${secs}${out}</div></div>`;
+  if (phone) return `<div class="trackview" style="flex-direction:column">${chain}</div>`;
+  const insp = `<aside class="inspector" style="--tc:${t.color}">
+    <div class="insp-name"><i></i>${esc(t.name)}</div>
+    <div class="kind">${kindLabel(t)}</div>
+    <div class="swatches">${PALETTE.map(c => `<button style="--c:${c}" data-act="color:${ti}:${c}" aria-pressed="${c === t.color}" aria-label="Color"></button>`).join('')}</div>
+    <h4>Mix</h4>
+    <div class="insp-mix">${vfader(ti)}<div class="insp-side">${knob(`t:${ti}:pan`, 40)}<div class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</div>${ms(ti)}</div></div>
+    <h4>Routing</h4>
+    <div class="route"><span>Input</span><b>${esc(t.input)}</b><span>Output</span><b>${esc(t.output)}</b><span>Channels</span><b>${t.channels === 1 ? 'Mono' : 'Stereo'}</b></div>
+    <div class="spacer"></div>
+    ${S.confirm === 'deltrack' ? `<div class="confirm">Delete ${esc(t.name)} and its ${t.chain.length} plugins? <button class="yes" data-act="deltrack:${ti}">Delete</button><button class="no" data-act="cancel">Cancel</button></div>` : `<button class="danger" data-act="askdel">Delete track</button>`}
+  </aside>`;
+  return `<div class="trackview">${chain}${insp}</div>`;
+}
+function trackDockPhone(){
+  const ti = S.route.t;
+  return `<div class="dock"><div class="tdock">${hfader(ti)}<span class="db" data-val="t:${ti}:gain">${fmtDb(S.tracks[ti].gain)}</span>${ms(ti).replace('<div class="ms">', '').replace(/<\/div>$/, '')}</div></div>`;
+}
+
+function paramCtl(ti, pi, p, it){
+  const key = `p:${ti}:${pi}:${p.id}`;
+  const phone = S.size === 'phone';
+  const pinned = it.macros.includes(p.id);
+  if (S.pinMode && p.kind !== 'out') return knob(key, phone ? 64 : 52, null, `pickable ${pinned ? 'pinned' : ''}`).replace('class="knob', `data-pin="${p.id}" class="knob`);
+  if (p.kind === 'bool') return `<div class="pctl"><button class="bigtog ${it.v[p.id] ? 'on' : ''}" data-act="ptog:${ti}:${pi}:${p.id}" aria-pressed="${!!it.v[p.id]}">${it.v[p.id] ? 'On' : 'Off'}</button><span class="lab">${esc(p.label)}</span></div>`;
+  if (p.kind === 'int' || p.kind === 'enum') return `<div class="pctl"><div class="stepper"><button data-act="step:${ti}:${pi}:${p.id}:-1" aria-label="Decrease">−</button><span class="sv" data-val="${key}">${esc(fmtParam(p, it.v[p.id]))}</span><button data-act="step:${ti}:${pi}:${p.id}:1" aria-label="Increase">+</button></div><span class="lab">${esc(p.label)}</span></div>`;
+  if (p.kind === 'out') return `<div class="pctl"><span class="outval">${esc(p.text)}</span><span class="lab">${esc(p.label)} · output</span></div>`;
+  return knob(key, phone ? 64 : 52, null, pinned ? 'pinned' : '');
+}
+function pluginView(){
+  const ti = S.route.t, pi = S.route.p, t = S.tracks[ti], it = t.chain[pi], tpl = it.tpl;
+  const phone = S.size === 'phone';
+  const q = S.search.trim().toLowerCase();
+  const groups = {};
+  for (const p of tpl.params) {
+    if (q && !p.label.toLowerCase().includes(q)) continue;
+    const g = p.group || 'Parameters'; (groups[g] ||= []).push(p);
+  }
+  const gHtml = Object.entries(groups).map(([g, ps]) => `<section class="group"><h5>${esc(g)}</h5><div class="pgrid">${ps.map(p => paramCtl(ti, pi, p, it)).join('')}</div></section>`).join('')
+    + (it.props.length && !q ? `<section class="group"><h5>Properties</h5><div class="pgrid">${it.props.map(pr => `<div class="prop"><input id="prop-${it.id}-${pr.id}" value="${esc(pr.value)}" aria-label="${esc(pr.label)}"><button class="ghost-btn">Choose file…</button></div>`).join('')}</div></section>` : '')
+    || `<p style="color:var(--muted)">No parameters match “${esc(S.search)}”.</p>`;
+  const progs = tpl.programs;
+  const step = progs ? `<div class="progstep"><button class="arr" data-act="prog:${ti}:${pi}:-1" aria-label="Previous program">‹</button><button class="pname" data-sheet="programs:${ti}:${pi}">${esc(progs[it.program])}</button><button class="arr" data-act="prog:${ti}:${pi}:1" aria-label="Next program">›</button></div>` : '';
+  const pinBtn = `<button class="pinbtn ghost-btn" data-act="pinmode" aria-pressed="${S.pinMode}">${S.pinMode ? 'Done choosing' : 'Choose card controls'}</button>`;
+  const head = `<div class="phead">
+      <button class="pwr" data-act="bypass:${ti}:${pi}" aria-pressed="${!it.bypass}" aria-label="Bypass" style="${it.bypass ? 'color:var(--faint)' : ''}">${ICON.power}</button>
+      ${phone ? '' : `<span class="pn">${esc(it.name)}<small>${esc(tpl.vendor || 'Sushi internal')} · ${tpl.type.toUpperCase()}</small></span>`}
+      ${phone ? `<span class="pn" style="font-size:17px">${esc(it.name)}</span>` : ''}
+      ${phone || !progs ? step : ''}
+      <div class="spacer"></div>
+      ${phone ? '' : `<input type="search" id="psearch" placeholder="Filter parameters" value="${esc(S.search)}" aria-label="Filter parameters">`}
+      ${!progs || phone ? pinBtn : ''}
+      <canvas class="meter" data-meter="${ti}" data-orient="v" title="${esc(t.name)} level"></canvas>
+      ${S.pinMode ? `<div class="pinhint">Tap up to 6 controls to show on the ${esc(t.name)} track card. ${it.macros.length}/6 chosen.</div>` : ''}
+    </div>`;
+  const side = !phone && progs ? `<aside class="progs"><h4>Programs</h4>${progs.map((n, i) => `<button data-act="setprog:${ti}:${pi}:${i}" aria-current="${i === it.program}">${esc(n)}</button>`).join('')}${pinBtn}</aside>` : '';
+  return `<div class="pluginview">${side}<div class="pmain">${head}<div class="groups">${gHtml}</div></div></div>`;
+}
+
+// ---------------------------------------------------------------- sheets
+function sheetHtml(){
+  const sh = S.sheet; if (!sh) return '';
+  const [kind, a, b] = sh.split(':');
+  let title = '', body = '', foot = '';
+  if (kind === 'addTrack') {
+    const f = S.form;
+    title = 'Add track';
+    body = `<div class="kindcards">
+        <button class="kindcard" data-act="fkind:audio" aria-pressed="${f.kind === 'audio'}">${ICON.audio}<b>Audio</b><span>Input → effects</span></button>
+        <button class="kindcard" data-act="fkind:midi" aria-pressed="${f.kind === 'midi'}">${ICON.midi}<b>MIDI</b><span>Keyboard → instrument → effects</span></button></div>
+      <label class="field"><span>Name</span><input id="f-name" value="${esc(f.name)}"></label>` +
+      (f.kind === 'audio' ? `
+      <div class="field"><span>Channels</span><div class="opts">${['Mono', 'Stereo'].map(o => `<button data-act="fopt:ch:${o}" aria-pressed="${f.ch === o}">${o}</button>`).join('')}</div></div>
+      <div class="fieldrow"><label class="field"><span>Input</span><select id="f-in">${(f.ch === 'Mono' ? ['In 1', 'In 2', 'In 3', 'In 4', 'In 5', 'In 6', 'In 7', 'In 8'] : ['In 1-2', 'In 3-4', 'In 5-6', 'In 7-8']).map(o => `<option>${o}</option>`).join('')}</select></label>
+      <label class="field"><span>Output</span><select id="f-out"><option>Out 1-2</option><option>Out 3-4</option></select></label></div>`
+      : `
+      <div class="fieldrow"><label class="field"><span>MIDI input</span><select id="f-port"><option>Port 0 · USB Keyboard</option><option>Port 1 · DIN In</option></select></label>
+      <label class="field"><span>Channel</span><select id="f-mch"><option>Omni</option>${Array.from({length:16}, (_, i) => `<option>${i + 1}</option>`).join('')}</select></label></div>
+      <div class="field"><span>Instrument</span><div class="opts">${['synth', 'sampler', 'dexed', 'surge', ''].map(k => `<button data-act="fopt:inst:${k}" aria-pressed="${f.inst === k}">${k ? esc(TPL[k].name) : 'None for now'}</button>`).join('')}</div></div>
+      <label class="field"><span>Output</span><select id="f-out"><option>Out 1-2</option><option>Out 3-4</option></select></label>`) +
+      `<p class="example" style="margin:0">The track gets a hidden level meter at the end of its chain. Inputs reported by Sushi: 8 in · 8 out.</p>`;
+    foot = `<button class="secondary" data-act="close">Cancel</button><button class="primary" data-act="create">Create ${f.kind === 'midi' ? 'MIDI' : 'audio'} track</button>`;
+  } else if (kind === 'browse') {
+    const t = S.tracks[+a];
+    title = `Add ${ROLE_LABEL[b].toLowerCase().replace(/s$/, '')} to ${t.name}`;
+    const q = (S.bsearch || '').toLowerCase();
+    const items = CATALOG.map(c => TPL[c.k] && {...c, tpl: TPL[c.k]}).filter(c => c.tpl.role === b && (!q || c.tpl.name.toLowerCase().includes(q)));
+    const by = {internal:'Built into Sushi', lv2:'LV2 · /usr/lib/lv2', vst3:'VST3 · ~/.vst3'};
+    body = `<input type="search" id="bsearch" placeholder="Search plugins" value="${esc(S.bsearch || '')}" aria-label="Search plugins">
+      <div class="plist">${Object.entries(by).map(([ty, lab]) => {
+        const xs = items.filter(c => c.tpl.type === ty); if (!xs.length) return '';
+        return `<h6>${lab}</h6>` + xs.map(c => `<button class="pitem" data-act="addplug:${a}:${b}:${c.k}"><span class="t"><b>${esc(c.tpl.name)}</b><small>${esc(c.tpl.uid)}</small></span><span class="badge">${ty}</span></button>`).join('');
+      }).join('') || '<p style="color:var(--muted)">No plugins match.</p>'}</div>
+      <p class="example" style="margin:0">LV2 and VST3 entries are example scan results.</p>`;
+  } else if (kind === 'programs') {
+    const it = S.tracks[+a].chain[+b];
+    title = `${it.name} programs`;
+    body = `<div class="plist">${it.tpl.programs.map((n, i) => `<button class="pitem" data-act="setprog:${a}:${b}:${i}" aria-current="${i === it.program}"><span class="t"><b style="${i === it.program ? 'color:var(--accent)' : ''}">${esc(n)}</b></span>${i === it.program ? '<span class="badge">current</span>' : ''}</button>`).join('')}</div>`;
+  } else if (kind === 'focus') {
+    const key = sh.slice(6); const c = ctl(key);
+    title = c.label;
+    body = `<div class="focus"><div class="big" data-val="${key}">${esc(c.fmt())}</div>
+      <div class="hfader" data-ctl="${key}" data-type="hfader" role="slider" tabindex="0" aria-label="${esc(c.label)}" style="--z:-1"><div class="hthumb"></div></div>
+      <div class="hint"><span>Drag along the bar · Shift or a second finger for fine</span><span>Double-tap to reset</span></div></div>`;
+    foot = `<button class="secondary" data-act="reset:${key}">Reset</button><button class="primary" data-act="close">Done</button>`;
+  } else if (kind === 'tracks') {
+    title = 'Go to track';
+    body = `<div class="plist tracklist">${S.tracks.map((t, i) => `<button class="pitem" data-go="track:${i}" style="--tc:${t.color}"><i></i><span class="t"><b>${esc(t.name)}</b><small>${t.chain.map(p => p.name).join(' → ') || 'empty'}</small></span><span class="badge">${t.kind}</span></button>`).join('') || '<p style="color:var(--muted)">No tracks yet.</p>'}</div>`;
+  } else if (kind === 'project') {
+    title = 'Project';
+    body = `<div class="plist">
+      <button class="pitem" data-act="save"><span class="t"><b>Save “${esc(S.project)}”</b><small>projects/${esc(S.project.replace(/\s/g, '_'))}.sushiproj</small></span></button>
+      <button class="pitem" data-act="save"><span class="t"><b>Save as…</b></span></button>
+      <h6>Open</h6>
+      ${['Live Rig', 'Rehearsal – Keys only', 'Studio Vocal Chain'].map(n => `<button class="pitem" data-act="close"><span class="t"><b>${n}</b><small>saved 2026-10-${n.length}</small></span></button>`).join('')}
+      <h6>New</h6><button class="pitem" data-act="newproj"><span class="t"><b>Empty project</b><small>Asks before discarding unsaved changes</small></span></button></div>`;
+  }
+  return `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="sheet-h"><h2>${esc(title)}</h2><button class="x" data-act="close" aria-label="Close">✕</button></div>
+    <div class="sheet-b">${body}</div>${foot ? `<div class="sheet-f">${foot}</div>` : ''}</div></div>`;
+}
+
+// ---------------------------------------------------------------- render
+const app = $('#app');
+function render(){
+  const keep = {};
+  ['#strips', '#chainwrap', '.content', '.pmain', '.sheet-b'].forEach(s => { const el = $(s, app); if (el) keep[s] = [el.scrollLeft, el.scrollTop]; });
+  const focusId = document.activeElement?.id; const selStart = document.activeElement?.selectionStart;
+  const v = S.route.view, phone = S.size === 'phone';
+  app.className = 'is-' + S.size + (app.clientHeight < 520 && S.size !== 'phone' ? ' is-short' : '') + (S.conn !== 'ok' ? ' offline' : '');
+  let content = v === 'mixer' ? mixerView() : v === 'track' ? trackView() : pluginView();
+  let dock = '';
+  if (phone && v === 'mixer') dock = mixerDockPhone();
+  if (phone && v === 'track') dock = trackDockPhone();
+  const tabs = phone ? `<nav class="tabbar"><button data-go="mixer" aria-current="${v === 'mixer'}">${ICON.mixer}Mixer</button><button data-sheet="tracks" aria-current="${v !== 'mixer'}">${ICON.tracks}Tracks</button><button data-sheet="project">${ICON.proj}Project</button></nav>` : '';
+  app.innerHTML = topbar() + (S.conn !== 'ok' ? '<div class="banner">Lost connection to sushi-webui · reconnecting…</div>' : '') +
+    `<main class="content">${content}</main>` + dock + tabs + sheetHtml() + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
+  app.querySelectorAll('[data-ctl]').forEach(el => paint(el, ctl(el.dataset.ctl).get(), ctl(el.dataset.ctl)));
+  for (const [s, [l, t]] of Object.entries(keep)) { const el = $(s, app); if (el) { el.scrollLeft = l; el.scrollTop = t; } }
+  if (focusId) { const el = document.getElementById(focusId); if (el) { el.focus(); if (selStart != null && el.setSelectionRange) try { el.setSelectionRange(selStart, selStart); } catch {} } }
+  registerMeters();
+  caption();
+}
+function caption(){
+  const v = S.route.view, phone = S.size === 'phone';
+  const txt = {
+    mixer: phone ? '<b>Mixer (phone)</b> · drag a row sideways for gain, tap a row to open the track. Master is docked at the bottom.'
+                 : '<b>Mixer</b> · drag faders and pan knobs, tap a track name or plugin chip to go deeper. Double-click a control to reset it.',
+    track: phone ? '<b>Track (phone)</b> · tap a card header to collapse it, › opens the plugin, drag ⋮⋮ to reorder. The track fader is docked.'
+                 : '<b>Track</b> · the signal flows left to right. Cards show pinned controls; ＋ opens the plugin browser for that section; drag ⋮⋮ to reorder.',
+    plugin: phone ? '<b>Plugin (phone)</b> · tap a knob for the precise focus slider, or drag it directly.'
+                  : '<b>Plugin</b> · every parameter, grouped. Shift-drag for fine control. “Choose card controls” picks what the track card shows.',
+  }[v];
+  $('#caption').innerHTML = txt + (S.tracks.length ? '' : ' Empty project: start by adding a track.');
+}
+
+// ---------------------------------------------------------------- meters (simulated engine + one rAF loop)
+const meters = new Map(); // key -> state
+let meterEls = [];
+function mstate(k){ let m = meters.get(k); if (!m) { m = {t:[-120, -120], d:[-120, -120], pk:[-120, -120], pkT:[0, 0], clip:false}; meters.set(k, m); } return m; }
+function registerMeters(){
+  const dpr = window.devicePixelRatio || 1;
+  meterEls = [...app.querySelectorAll('canvas.meter')].map(cv => {
+    const r = cv.getBoundingClientRect();
+    const w = Math.max(1, Math.round(r.width * dpr / (frameScale || 1))), h = Math.max(1, Math.round(r.height * dpr / (frameScale || 1)));
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+    const vert = cv.dataset.orient === 'v';
+    const g = vert ? ctx.createLinearGradient(0, h, 0, 0) : ctx.createLinearGradient(0, 0, w, 0);
+    const y = db => (db + 60) / 66;
+    g.addColorStop(0, '#2f9e6a'); g.addColorStop(y(-12), '#45c486'); g.addColorStop(y(-12) + 0.001, '#e8bf45'); g.addColorStop(y(-3), '#e8bf45'); g.addColorStop(y(-3) + 0.001, '#ec4d4f'); g.addColorStop(1, '#ec4d4f');
+    return {cv, ctx, w, h, vert, g, key: cv.dataset.meter};
+  });
+}
+const frac = db => clamp((db + 60) / 66);
+function chGains(tr){                       // mirrors Track::_apply_pan_and_gain (approximate pan law)
+  const lin = Math.pow(10, tr.gain / 20);
+  return [lin * (tr.pan > 0 ? 1 - tr.pan : 1), lin * (tr.pan < 0 ? 1 + tr.pan : 1)];
+}
+let tSim = 0;
+function simulate(){                          // what sushi-webui would send: ≤25 Hz per meter
+  tSim += 0.04;
+  const anySolo = S.tracks.some(t => t.solo);
+  const beatLen = 60 / S.tempo;
+  const sumPow = [0, 0];
+  S.tracks.forEach((t, i) => {
+    const m = mstate(String(i));
+    const active = t.kind === 'audio' || S.playing;
+    const g = t.gen;
+    let pre = -120;
+    if (active && !t.pending) {
+      const phase = (tSim % beatLen) / beatLen;
+      const beat = g.beat ? g.beat * 22 * Math.exp(-phase * 7) : 0;
+      const swell = Math.sin(tSim * 0.7 + i) * g.vary * 0.6 + (Math.random() - 0.5) * g.vary;
+      pre = g.base + swell + beat;
+      const chainByp = t.chain.length && t.chain.every(p => p.bypass);
+      if (chainByp) pre -= 3;
+    }
+    const [gl, gr] = chGains(t);
+    const silent = t.mute || (anySolo && !t.solo);
+    const post = silent ? [-120, -120] : [pre + 20 * Math.log10(Math.max(gl, 1e-6)) + (Math.random() - 0.5), pre + 20 * Math.log10(Math.max(gr, 1e-6)) + (Math.random() - 0.5)];
+    m.t = post;
+    post.forEach((db, c) => { sumPow[c] += Math.pow(10, db / 10); if (db > 0) m.clip = true; });
+  });
+  const mm = mstate('m'); const [ml, mr] = chGains(S.master);
+  mm.t = S.master.mute ? [-120, -120] : sumPow.map((p, c) => 10 * Math.log10(Math.max(p, 1e-12)) + 20 * Math.log10([ml, mr][c]));
+  if (mm.t.some(d => d > 0) && !mm.clip) { mm.clip = true; if (!S.sheet && !drag && !reorder) render(); }
+}
+setInterval(simulate, 40);
+setInterval(() => { S.cpu = clamp(0.12 + S.tracks.length * 0.012 + Math.random() * 0.04, 0, 0.95); const el = $('#cpu'); if (el) el.textContent = Math.round(S.cpu * 100) + '%' + (S.size === 'phone' ? '' : ' CPU'); }, 1000);
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  for (const m of meters.values()) for (let c = 0; c < 2; c++) {
+    if (m.t[c] > m.d[c]) m.d[c] += (m.t[c] - m.d[c]) * 0.7; else m.d[c] = Math.max(m.t[c], m.d[c] - 26 * dt);
+    if (m.d[c] >= m.pk[c]) { m.pk[c] = m.d[c]; m.pkT[c] = now; } else if (now - m.pkT[c] > 1500) m.pk[c] = Math.max(m.d[c], m.pk[c] - 20 * dt);
+  }
+  for (const e of meterEls) {
+    const m = mstate(e.key), {ctx, w, h, vert, g} = e;
+    ctx.clearRect(0, 0, w, h);
+    if (vert) {
+      const led = Math.round(h * 0.05) + 2, gap = Math.max(1, Math.round(w * 0.12)), bw = (w - gap) / 2, H = h - led - 2;
+      ctx.fillStyle = m.clip ? '#ec4d4f' : '#2f3642'; ctx.fillRect(0, 0, w, led);
+      for (let c = 0; c < 2; c++) {
+        const x = c * (bw + gap);
+        ctx.globalAlpha = 0.14; ctx.fillStyle = g; ctx.fillRect(x, led + 2, bw, H); ctx.globalAlpha = 1;
+        const lv = frac(m.d[c]) * H; ctx.fillRect(x, h - lv, bw, lv);
+        const pk = frac(m.pk[c]); if (pk > 0.01) { ctx.fillStyle = '#e7e9ee'; ctx.fillRect(x, h - pk * H, bw, Math.max(1, h * 0.006)); ctx.fillStyle = g; }
+      }
+    } else {
+      const led = Math.round(w * 0.025) + 2, gap = Math.max(1, Math.round(h * 0.15)), bh = (h - gap) / 2, W = w - led - 2;
+      for (let c = 0; c < 2; c++) {
+        const y = c * (bh + gap);
+        ctx.globalAlpha = 0.12; ctx.fillStyle = g; ctx.fillRect(0, y, W, bh); ctx.globalAlpha = 1;
+        ctx.fillRect(0, y, frac(m.d[c]) * W, bh);
+        const pk = frac(m.pk[c]); if (pk > 0.01) { ctx.fillStyle = '#e7e9ee'; ctx.fillRect(pk * W, y, Math.max(1, w * 0.004), bh); ctx.fillStyle = g; }
+      }
+      ctx.fillStyle = m.clip ? '#ec4d4f' : '#2f3642'; ctx.fillRect(w - led, 0, led, h);
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------------------------------------------------------------- gestures
+let drag = null, lastTap = {key: null, t: 0};
+const pointers = new Set();
+app.addEventListener('pointerdown', e => {
+  pointers.add(e.pointerId);
+  if (drag && pointers.size > 1) { drag.fine = true; rebase(); return; }
+  const cv = e.target.closest('canvas.meter');
+  if (cv && !e.target.closest('[data-ctl]')) { const m = mstate(cv.dataset.meter); m.clip = false; if (cv.dataset.meter === 'm') render(); return; }
+  const h = e.target.closest('[data-drag]');
+  if (h) return startReorder(e, h);
+  const el = e.target.closest('[data-ctl]'); if (!el) return;
+  const type = el.dataset.type, c = ctl(el.dataset.ctl);
+  drag = {el, key: el.dataset.ctl, type, c, x0: e.clientX, y0: e.clientY, v0: c.get(), captured: type !== 'hfader', moved: false, fine: e.shiftKey || el.dataset.fine === '1', id: e.pointerId};
+  if (drag.captured) { el.setPointerCapture(e.pointerId); e.preventDefault(); el.classList.add('dragging'); }
+});
+function rebase(){ if (!drag) return; drag.v0 = drag.c.get(); drag.x0 = drag.lx ?? drag.x0; drag.y0 = drag.ly ?? drag.y0; }
+app.addEventListener('pointermove', e => {
+  if (reorder) return moveReorder(e);
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = (e.clientX - drag.x0) / frameScale, dy = (e.clientY - drag.y0) / frameScale;
+  if (!drag.captured) {
+    if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) { drag.captured = true; drag.el.setPointerCapture(e.pointerId); drag.el.classList.add('dragging'); drag.x0 = e.clientX; drag.v0 = drag.c.get(); }
+    else if (Math.abs(dy) > 8) { drag = null; }
+    return;
+  }
+  const fine = e.shiftKey || drag.fine;
+  if (fine !== drag.wasFine) { drag.wasFine = fine; drag.lx = e.clientX; drag.ly = e.clientY; rebase(); return; }
+  drag.lx = e.clientX; drag.ly = e.clientY;
+  const r = drag.el.getBoundingClientRect();
+  let delta;
+  if (drag.type === 'hfader') delta = (e.clientX - drag.x0) / (r.width - 16);
+  else if (drag.type === 'vfader') delta = -(e.clientY - drag.y0) / (r.height - 20);
+  else delta = -(e.clientY - drag.y0) / (200 * frameScale);
+  if (Math.abs(e.clientX - drag.x0) + Math.abs(e.clientY - drag.y0) > 3) drag.moved = true;
+  drag.c.set(clamp(drag.v0 + delta * (fine ? 0.1 : 1)));
+  S.dirty = true;
+  refresh(drag.key);
+});
+const endDrag = e => {
+  pointers.delete(e.pointerId);
+  if (reorder) return endReorder(e);
+  if (!drag || e.pointerId !== drag.id) return;
+  const d = drag; drag = null;
+  d.el.classList.remove('dragging');
+  if (!d.moved && e.type === 'pointerup') {
+    const now = performance.now();
+    if (lastTap.key === d.key && now - lastTap.t < 320) { d.c.set(d.c.def); refresh(d.key); lastTap = {key: null, t: 0}; clearTimeout(tapTimer); return; }
+    lastTap = {key: d.key, t: now};
+    if (d.type === 'knob' && S.size === 'phone' && S.route.view === 'plugin' && !S.pinMode && !S.sheet) {
+      tapTimer = setTimeout(() => { S.sheet = 'focus:' + d.key; render(); }, 330);
+    }
+  }
+};
+let tapTimer;
+app.addEventListener('pointerup', endDrag);
+app.addEventListener('pointercancel', endDrag);
+app.addEventListener('dblclick', e => { const el = e.target.closest('[data-ctl]'); if (el && S.size !== 'phone') { const c = ctl(el.dataset.ctl); c.set(c.def); refresh(el.dataset.ctl); } });
+app.addEventListener('wheel', e => {
+  const el = e.target.closest('.knob[data-ctl],[data-type="num"]'); if (!el) return;
+  e.preventDefault(); const c = ctl(el.dataset.ctl); c.set(clamp(c.get() - Math.sign(e.deltaY) * (e.shiftKey ? 0.005 : 0.02))); refresh(el.dataset.ctl);
+}, {passive: false});
+app.addEventListener('keydown', e => {
+  const el = e.target.closest('[data-ctl]'); if (!el) return;
+  const step = {ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1}[e.key]; if (!step) return;
+  e.preventDefault(); const c = ctl(el.dataset.ctl); c.set(clamp(c.get() + step * (e.shiftKey ? 0.005 : 0.02))); refresh(el.dataset.ctl);
+});
+
+// drag-to-reorder within a section
+let reorder = null;
+function startReorder(e, h){
+  const [ti, pi] = h.dataset.drag.split(':').map(Number);
+  const cardEl = h.closest('.card'), sec = h.closest('.section');
+  const siblings = [...sec.querySelectorAll('.card[data-card]')];
+  reorder = {ti, pi, cardEl, siblings, x0: e.clientX, y0: e.clientY, vert: S.size === 'phone', id: e.pointerId, snapshot: S.tracks[ti].chain.slice()};
+  h.setPointerCapture(e.pointerId); e.preventDefault(); cardEl.classList.add('drag');
+}
+function moveReorder(e){
+  const r = reorder; const dx = (e.clientX - r.x0) / frameScale, dy = (e.clientY - r.y0) / frameScale;
+  r.cardEl.style.transform = r.vert ? `translateY(${dy}px)` : `translateX(${dx}px)`;
+  r.px = e.clientX; r.py = e.clientY;
+}
+function endReorder(){
+  const r = reorder; reorder = null; r.cardEl.classList.remove('drag'); r.cardEl.style.transform = '';
+  if (r.px == null) return;
+  const others = r.siblings.filter(s => s !== r.cardEl);
+  let before = null;
+  for (const s of others) { const b = s.getBoundingClientRect(); if (r.vert ? r.py < b.top + b.height / 2 : r.px < b.left + b.width / 2) { before = s; break; } }
+  const chain = S.tracks[r.ti].chain, moved = chain[r.pi];
+  const itemOf = el => r.snapshot[+el.dataset.card];   // ≈ MoveProcessorOnTrack{before_processor}
+  chain.splice(r.pi, 1);
+  let idx;
+  if (before) idx = chain.indexOf(itemOf(before));
+  else { const lastSib = others[others.length - 1]; idx = lastSib ? chain.indexOf(itemOf(lastSib)) + 1 : r.pi; }
+  chain.splice(idx, 0, moved); S.dirty = true; render();
+}
+
+// ---------------------------------------------------------------- clicks
+app.addEventListener('click', e => {
+  const go = e.target.closest('[data-go]'), act = e.target.closest('[data-act]'), sh = e.target.closest('[data-sheet]'), row = e.target.closest('[data-row]'), ak = e.target.closest('[data-addkind]'), pin = e.target.closest('[data-pin]');
+  if (pin && S.pinMode) return togglePin(pin.dataset.pin);
+  if (act) return doAct(act.dataset.act, e);
+  if (go) { const [v, t, p] = go.dataset.go.split(':'); S.route = {view: v, t: +t || 0, p: +p || 0}; S.sheet = null; S.confirm = null; S.pinMode = false; S.search = ''; return render(); }
+  if (sh) { openSheet(sh.dataset.sheet); return; }
+  if (ak) { openSheet('addTrack', ak.dataset.addkind); return; }
+  if (row && !e.target.closest('[data-ctl],button')) { S.route = {view:'track', t: +row.dataset.row, p: 0}; render(); }
+});
+function openSheet(name, kind = 'audio'){
+  if (name === 'addTrack') { const n = S.tracks.filter(t => t.kind === kind).length + 1; S.form = {kind, name: (kind === 'midi' ? 'MIDI ' : 'Audio ') + n, ch: 'Mono', inst: 'synth'}; }
+  S.bsearch = ''; S.sheet = name; render();
+}
+function togglePin(id){
+  const it = S.tracks[S.route.t].chain[S.route.p];
+  const i = it.macros.indexOf(id);
+  if (i >= 0) it.macros.splice(i, 1); else if (it.macros.length < 6) it.macros.push(id); else return toast('A card shows at most 6 controls');
+  render();
+}
+function toast(msg){ S.toast = msg; render(); clearTimeout(toast.t); toast.t = setTimeout(() => { S.toast = null; render(); }, 1800); }
+function doAct(a, e){
+  const [k, x, y, z, w] = a.split(':');
+  switch (k) {
+    case 'play': S.playing = !S.playing; break;
+    case 'stop': S.playing = false; break;
+    case 'mute': trk(x).mute = !trk(x).mute; break;
+    case 'solo': trk(x).solo = !trk(x).solo; break;
+    case 'bypass': { const p = trk(x).chain[+y]; p.bypass = !p.bypass; break; }
+    case 'collapse': { const p = trk(x).chain[+y]; p.collapsed = !p.collapsed; break; }
+    case 'prog': { const p = trk(x).chain[+y]; const n = p.tpl.programs.length; p.program = (p.program + +z + n) % n; break; }
+    case 'setprog': { trk(x).chain[+y].program = +z; if (S.sheet) S.sheet = null; break; }
+    case 'ptog': { const p = trk(x).chain[+y]; p.v[z] = p.v[z] ? 0 : 1; break; }
+    case 'step': { const it = trk(x).chain[+y]; const p = it.tpl.params.find(q => q.id === z); const st = 1 / (p.max - p.min); it.v[z] = clamp(quantize(p, it.v[z] + st * +w)); refresh(`p:${x}:${y}:${z}`); return; }
+    case 'color': trk(x).color = y; break;
+    case 'askdel': S.confirm = 'deltrack'; break;
+    case 'cancel': S.confirm = null; break;
+    case 'deltrack': S.tracks.splice(+x, 1); meters.clear(); S.route = {view:'mixer', t:0, p:0}; S.confirm = null; toast('Track deleted'); return;
+    case 'pinmode': S.pinMode = !S.pinMode; break;
+    case 'scrim': if (e.target !== e.currentTarget && e.target.closest('.sheet')) return; S.sheet = null; break;
+    case 'close': S.sheet = null; break;
+    case 'reset': { const c = ctl(a.slice(6)); c.set(c.def); refresh(a.slice(6)); return; }
+    case 'fkind': S.form.kind = x; S.form.name = (x === 'midi' ? 'MIDI ' : 'Audio ') + (S.tracks.filter(t => t.kind === x).length + 1); break;
+    case 'fopt': S.form[x] = y; break;
+    case 'create': return createTrack();
+    case 'addplug': return addPlugin(+x, y, z);
+    case 'save': S.dirty = false; S.sheet = null; toast(`Saved ${S.project}`); return;
+    case 'newproj': scenario('empty'); $('#scen').value = 'empty'; break;
+  }
+  S.dirty = true; render();
+}
+function createTrack(){
+  const f = S.form; f.name = $('#f-name')?.value || f.name;
+  const inp = f.kind === 'audio' ? ($('#f-in')?.value || 'In 1') : `MIDI ${($('#f-port')?.value || 'Port 0').split(' ·')[0].toLowerCase()} · ${$('#f-mch')?.value || 'Omni'}`;
+  const chain = f.kind === 'midi' && f.inst ? [inst(f.inst)] : [];
+  const t = mkTrack(f.name, f.kind, chain, {color: PALETTE[S.tracks.length % 8], input: inp, channels: f.kind === 'audio' && f.ch === 'Mono' ? 1 : 2, pending: true,
+    gen: f.kind === 'midi' ? {base:-14, vary:6, beat:0.6} : {base:-20, vary:8, beat:0}});
+  S.tracks.push(t); S.sheet = null; render();
+  setTimeout(() => {                       // ≈ CreateTrack → TRACK_ADDED → connections → peakmeter → PROCESSOR_ADDED
+    t.pending = false;
+    if (S.size === 'phone') S.route = {view:'track', t: S.tracks.indexOf(t), p:0};
+    render(); const s = $('#strips'); if (s) s.scrollLeft = s.scrollWidth;
+  }, 900);
+}
+function addPlugin(ti, sec, key){
+  S.sheet = null; S.pendingPlugin = {t: ti, sec, k: key}; render();
+  setTimeout(() => {                       // ≈ CreateProcessorOnTrack(before meter) → PROCESSOR_ADDED
+    const tr = S.tracks[ti]; const p = inst(key);
+    const order = sectionsFor(tr); let idx = tr.chain.length;
+    for (let i = 0; i < tr.chain.length; i++) if (order.indexOf(tr.chain[i].tpl.role) > order.indexOf(sec)) { idx = i; break; }
+    tr.chain.splice(idx, 0, p); S.pendingPlugin = null; S.dirty = true; render();
+  }, 700);
+}
+app.addEventListener('input', e => {
+  if (e.target.id === 'psearch') { S.search = e.target.value; render(); }
+  if (e.target.id === 'bsearch') { S.bsearch = e.target.value; render(); }
+  if (e.target.id === 'f-name') S.form.name = e.target.value;
+});
+
+// ---------------------------------------------------------------- device frames
+const DEV = {desktop:[1280, 800], tablet:[820, 1180], phone:[390, 844], phoneL:[844, 390]};
+let frameScale = 1;
+const frameEl = $("#frame");
+function layoutFrame(){
+  const d = S.device;
+  document.querySelectorAll('#devseg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dev === d));
+  if (d === 'auto') { frameEl.className = 'frame auto'; frameEl.style.width = frameEl.style.height = frameEl.style.transform = ''; $('#stage').style.height = ''; frameScale = 1; }
+  else {
+    const [w, h] = DEV[d]; const avail = $('#stage').clientWidth; const availH = Math.max(420, innerHeight - $('#stage').getBoundingClientRect().top - 16);
+    frameScale = Math.min(1, avail / w, availH / h);
+    frameEl.className = 'frame'; frameEl.style.width = w + 'px'; frameEl.style.height = h + 'px'; frameEl.style.transform = `scale(${frameScale})`;
+    $('#stage').style.height = h * frameScale + 'px';
+  }
+  sizeClass();
+}
+function sizeClass(){
+  const w = app.clientWidth;
+  const s = w < 600 ? 'phone' : w < 1024 ? 'tablet' : 'desktop';
+  if (s !== S.size) { S.size = s; render(); } else registerMeters();
+}
+new ResizeObserver(() => sizeClass()).observe(app);
+addEventListener('resize', () => { if (S.device !== 'auto') layoutFrame(); });
+$('#devseg').addEventListener('click', e => { const b = e.target.closest('[data-dev]'); if (!b) return; S.device = b.dataset.dev; layoutFrame(); render(); });
+$('#scen').addEventListener('change', e => { scenario(e.target.value); render(); });
+$('#disc').addEventListener('click', () => { S.conn = 'lost'; render(); setTimeout(() => { S.conn = 'ok'; render(); }, 3000); });
+
+scenario('live');
+S.size = app.clientWidth < 600 ? 'phone' : app.clientWidth < 1024 ? 'tablet' : 'desktop';
+render();
+layoutFrame();
+})();
+</script>
