@@ -10,6 +10,7 @@ Review decisions so far (2026-10-15):
   - A track sends to a bus by name.
   - The send and return processors stay hidden.
 - **Next/previous** controls are in Track mode on every device, plus swipe on touch.
+- **No phone tab bar.** The Project menu opens from the project name in the top bar, which frees vertical space.
 - **Track mode** hides the input/output blocks and the channel strip by default (behind "Mix & routing"). Mixing belongs to Mixer mode.
 - **Phone mixer** rows include pan.
 - **Later versions:** snapshots and MIDI learn.
@@ -60,7 +61,7 @@ Track kinds as the user sees them, and how each one is built in Sushi:
 
 Global chrome on every screen size:
 - **Top bar:**
-  - project name (a dot marks unsaved changes; a red dot means master clipped);
+  - project name (a dot marks unsaved changes; a red dot means master clipped). Tapping it opens the Project menu on every device;
   - a breadcrumb on desktop and tablet, or a back button on phone;
   - tempo, play/stop and CPU %;
   - a connection dot.
@@ -139,8 +140,6 @@ Routes are `#/mixer`, `#/track/Guitar` and `#/track/Guitar/plugin/Drive`. They c
 │  (◠)  ▬▬▬▬▬▬▬▬░░░░░  -2.0 dB │
 ├──────────────────────────────┤
 │ MASTER ▬▬▬▬▬▬▬▬▬▬░ -0.5 dB [M]│  ← docked; “MASTER ›” opens it in advanced mode
-├──────────────────────────────┤
-│  Mixer     Tracks    Project │
 └──────────────────────────────┘
 ```
 - **Opening a track:** tap the row anywhere outside its controls.
@@ -380,7 +379,7 @@ The UI converts the fader position to dB, then to Sushi's normalized value. The 
 ## 10. Open questions
 1. **Send position:** sends sit at the end of the chain (post-FX). Is a "pre-FX" send position needed for any use case?
 2. **Bus → bus sends** (e.g. delay into reverb): v1 says no. Revisit if users ask.
-3. **Phone bottom tab "Tracks":** now that Track mode has ‹ › and swipe, should this tab become a quick track picker or be removed?
+3. ~~Phone bottom tab bar~~: removed (2026-10-15). The Project menu opens from the project name.
 4. **Mix & routing memory:** should the toggle be remembered per browser (current proposal) or per project?
 5. **Master chain in non-advanced mode:** hidden entirely (current), or show its plugins read-only?
 

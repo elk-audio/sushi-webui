@@ -652,7 +652,7 @@ function topbar(){
     <span class="conn ${S.conn !== 'ok' ? 'lost' : ''}" title="${S.conn === 'ok' ? 'Connected to Sushi' : 'Reconnecting'}"></span>`;
   if (phone) {
     let left;
-    if (r.view === 'mixer') left = `<div class="proj ptitle">${esc(S.project)}${S.dirty ? '<span class="dirty"></span>' : ''}${masterClip ? '<span class="clipdot"></span>' : ''}</div>`;
+    if (r.view === 'mixer') left = `<button class="proj ptitle" data-sheet="project">${esc(S.project)}${S.dirty ? '<span class="dirty"></span>' : ''}${masterClip ? '<span class="clipdot"></span>' : ''}</button>`;
     else if (r.view === 'track') left = `<button class="backbtn" data-go="mixer">${ICON.back}Mixer</button>`;
     else left = `<button class="backbtn" data-go="track:${r.t}">${ICON.back}${esc(tr.name)}</button>`;
     return `<header class="topbar">${left}<div class="spacer"></div>${trans}</header>`;
@@ -924,7 +924,7 @@ function render(){
   let dock = '';
   if (phone && v === 'mixer') dock = mixerDockPhone();
   if (phone && v === 'track' && S.showMix) dock = trackDockPhone();
-  const tabs = phone ? `<nav class="tabbar"><button data-go="mixer" aria-current="${v === 'mixer'}">${ICON.mixer}Mixer</button><button data-sheet="tracks" aria-current="${v !== 'mixer'}">${ICON.tracks}Tracks</button><button data-sheet="project">${ICON.proj}Project</button></nav>` : '';
+  const tabs = '';                        // phone tab bar removed after review (UX_DESIGN §10.3)
   app.innerHTML = topbar() + (S.conn !== 'ok' ? '<div class="banner">Lost connection to sushi-webui · reconnecting…</div>' : '') +
     `<main class="content">${content}</main>` + dock + tabs + sheetHtml() + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
   app.querySelectorAll('[data-ctl]').forEach(el => paint(el, ctl(el.dataset.ctl).get(), ctl(el.dataset.ctl)));
