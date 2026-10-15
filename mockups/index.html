@@ -133,8 +133,7 @@ canvas.meter{display:block}
 .db{font-family:var(--font-num);font-size:12px;text-align:center;color:var(--text)}
 .ms{display:flex;gap:4px;justify-content:center}
 .ms .tog{flex:1}
-.strip.master{border-top-color:var(--text);background:var(--s2);margin:10px 10px 10px 0;width:92px}
-.strip.master .chips{min-height:0}
+.strip.post{border-top-color:var(--text);background:var(--s2);margin:10px 10px 10px 0;width:92px}
 .add-strip{flex:none;width:92px;border:1.5px dashed var(--line);border-radius:var(--r);color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-weight:600}
 .add-strip:hover{color:var(--accent);border-color:var(--accent)}
 .add-strip span{font-size:28px;line-height:1}
@@ -178,7 +177,8 @@ canvas.meter{display:block}
 .kindcard svg{width:28px;height:28px;color:var(--accent)}
 
 /* ---------- track view ---------- */
-.trackview{display:flex;height:100%;min-height:0}
+.trackview{display:flex;flex-direction:column;height:100%;min-height:0}
+.tbody{flex:1;display:flex;min-height:0}
 .chainwrap{flex:1;overflow:auto;padding:16px;min-width:0}
 .chain{display:flex;align-items:stretch;gap:0;min-width:min-content}
 .io{flex:none;width:96px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:12px;color:var(--muted);font-size:12px}
@@ -309,6 +309,38 @@ canvas.meter{display:block}
 .toast{position:absolute;left:50%;bottom:80px;transform:translateX(-50%);background:var(--text);color:var(--app);padding:10px 16px;border-radius:8px;font-weight:600;z-index:30;white-space:nowrap}
 .tracklist .pitem i{width:10px;height:28px;border-radius:3px;background:var(--tc)}
 
+/* v2: track header, sends, buses, advanced */
+.nav{width:36px;height:36px;border-radius:6px;background:var(--s2);color:var(--text);display:grid;place-items:center;font-size:18px;flex:none}
+.nav:disabled{opacity:.25;cursor:default}
+.thead{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--app);flex:none}
+.thead i{width:12px;height:12px;border-radius:3px;background:var(--tc);flex:none}
+.thead .tn{font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.thead canvas.meter{width:96px;height:12px;flex:none}
+.is-phone .thead .kind{display:none}
+.is-phone .thead canvas.meter{width:56px}
+.mixbtn{padding:0 12px;height:36px;border-radius:6px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;flex:none}
+.mixbtn[aria-pressed="true"]{border-color:var(--accent);color:var(--text);background:var(--s2)}
+.is-phone .chainwrap{touch-action:pan-y}
+.knob.mini .v{display:none}
+.knob.mini .lab{font-size:10px}
+.sends{display:grid;grid-template-columns:1fr 1fr;gap:2px;min-height:50px;justify-items:center;align-items:start}
+.sends .chip.more{grid-column:1/-1;text-align:center}
+.is-short .sends{display:none}
+.panph{flex:none}
+.strip.pre{background:var(--s2);border-top-color:var(--muted)}
+.strip.bus .strip-name{font-style:italic}
+.sdiv{flex:none;writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;letter-spacing:.16em;color:var(--faint);display:flex;align-items:center;justify-content:center;padding:0 3px;border-right:1px solid var(--line)}
+.rowdiv{padding:12px 12px 4px;font-size:11px;letter-spacing:.14em;color:var(--muted)}
+.row-bot .knob{flex:none}
+.mdock .tog,.tdock .tog{height:36px;min-width:40px}
+.mdock .lbl{text-align:left}
+.card.send{width:176px;border-top:3px solid var(--tc)}
+.is-phone .card.send{width:auto}
+.sendbody{display:flex;align-items:center;justify-content:space-around;gap:8px;padding:10px 8px}
+.prepost{display:flex;flex-direction:column;gap:4px}
+.prepost button{min-height:30px;padding:4px 12px}
+.kindcards.three{grid-template-columns:repeat(3,1fr)}
+.is-phone .kindcards.three{grid-template-columns:1fr}
 @media (prefers-reduced-motion: reduce){ .spin,.conn.lost{animation:none} }
 @media (max-width:600px){ body{padding-block:8px} .caption{display:none} .frame.auto{height:calc(100dvh - 120px)} }
 </style>
@@ -469,35 +501,47 @@ const S = {
   route: {view:'mixer', t:0, p:0},
   sheet: null, confirm: null, pinMode: false, search: '',
   tracks: [], master: null,
+  showMix: false, advanced: false,
   playing: true, tempo: 120, cpu: 0.21, conn: 'ok', dirty: true, toast: null,
   project: 'Live Rig',
 };
 function mkTrack(name, kind, chain, o = {}){
-  return {id: uidc++, name, kind, chain, gain: 0, pan: 0, mute: false, solo: false, color: PALETTE[0],
-    channels: kind === 'midi' ? 2 : 1, input: kind === 'midi' ? 'MIDI port 0 · Omni' : 'In 1', output: 'Out 1-2',
+  return {id: uidc++, name, kind, chain, gain: 0, pan: 0, mute: false, solo: false, color: PALETTE[0], sends: [],
+    channels: kind === 'audio' ? 1 : 2, input: kind === 'midi' ? 'MIDI port 0 · Omni' : kind === 'bus' ? 'Sends' : 'In 1', output: 'Out 1-2',
     gen: {base: -18, vary: 6, beat: 0}, ...o};
 }
 function scenario(name){
   uidc = 1;
-  S.master = mkTrack('Master', 'master', [], {gain: -0.5, channels: 2, input: 'all tracks', color:'#e7e9ee'});
+  S.pre = mkTrack('Input', 'pre', [], {channels: 8, input: 'In 1-8', color: '#8c95a5'});
+  S.master = mkTrack('Master', 'post', name === 'empty' ? [] : [inst('comp', {name: 'Bus Comp'})], {gain: -0.5, channels: 8, color: '#e7e9ee'});
   if (name === 'empty') { S.tracks = []; S.project = 'Untitled'; }
   else if (name === 'stress') {
     S.project = 'Stress test';
+    const rv = mkTrack('Reverb', 'bus', [inst('reverb')], {color: PALETTE[6], gain: -3});
+    const dl = mkTrack('Delay', 'bus', [inst('delay')], {color: PALETTE[7], gain: -6});
     S.tracks = Array.from({length: 24}, (_, i) => {
       const midi = i % 3 === 2;
-      return mkTrack(`Ch ${i + 1}`, midi ? 'midi' : 'audio', midi ? [inst('synth'), inst('reverb')] : [inst('comp'), inst('eq3')],
-        {color: PALETTE[i % 8], gain: -2 - (i % 5), input: midi ? 'MIDI port 0 · ch ' + (i % 16 + 1) : `In ${i % 8 + 1}`, gen:{base:-22 + (i % 4) * 3, vary: 7, beat: i % 4 === 0 ? 1 : 0}});
-    });
+      return mkTrack(`Ch ${i + 1}`, midi ? 'midi' : 'audio', midi ? [inst('synth'), inst('chorus')] : [inst('comp'), inst('eq3')],
+        {color: PALETTE[i % 8], gain: -2 - (i % 5), input: midi ? 'MIDI port 0 · ch ' + (i % 16 + 1) : `In ${i % 8 + 1}`, gen:{base:-22 + (i % 4) * 3, vary: 7, beat: i % 4 === 0 ? 1 : 0},
+         sends: [{bus: rv.id, level: -14 - (i % 6), post: true}].concat(i % 2 ? [{bus: dl.id, level: -20, post: true}] : [])});
+    }).concat([rv, dl]);
   } else {
     S.project = 'Live Rig';
+    const rv = mkTrack('Reverb', 'bus', [inst('dragon')], {color: PALETTE[6], gain: -2});
+    const dl = mkTrack('Delay', 'bus', [inst('delay'), inst('eq3')], {color: PALETTE[7], gain: -5});
     S.tracks = [
-      mkTrack('Guitar', 'audio', [inst('gate'), inst('drive'), inst('cab'), inst('reverb')], {color:PALETTE[0], gain:-3.5, pan:-0.2, input:'In 1', gen:{base:-14, vary:8, beat:0}}),
-      mkTrack('Vocal', 'audio', [inst('comp'), inst('eq3'), inst('reverb', {name:'Plate'})], {color:PALETTE[1], gain:0, input:'In 2', gen:{base:-17, vary:9, beat:0}}),
-      mkTrack('Synth', 'midi', [inst('arp'), inst('synth'), inst('chorus'), inst('reverb')], {color:PALETTE[2], gain:-8, pan:0.15, gen:{base:-12, vary:5, beat:0.5}}),
+      mkTrack('Guitar', 'audio', [inst('gate'), inst('drive'), inst('cab')], {color:PALETTE[0], gain:-3.5, pan:-0.2, input:'In 1', gen:{base:-14, vary:8, beat:0},
+        sends: [{bus: rv.id, level: -12, post: true}, {bus: dl.id, level: -16, post: true}]}),
+      mkTrack('Vocal', 'audio', [inst('comp'), inst('eq3')], {color:PALETTE[1], gain:0, input:'In 2', gen:{base:-17, vary:9, beat:0},
+        sends: [{bus: rv.id, level: -9, post: true}]}),
+      mkTrack('Synth', 'midi', [inst('arp'), inst('synth'), inst('chorus')], {color:PALETTE[2], gain:-8, pan:0.15, gen:{base:-12, vary:5, beat:0.5},
+        sends: [{bus: rv.id, level: -14, post: true}, {bus: dl.id, level: -20, post: false}]}),
       mkTrack('Keys', 'midi', [inst('sampler'), inst('eq3')], {color:PALETTE[3], gain:-6, input:'MIDI port 1 · ch 2', gen:{base:-20, vary:7, beat:0}}),
-      mkTrack('Drums', 'audio', [inst('comp'), inst('eq3')], {color:PALETTE[4], gain:-1.2, channels:2, input:'In 3-4', gen:{base:-30, vary:3, beat:1}}),
+      mkTrack('Drums', 'audio', [inst('comp'), inst('eq3')], {color:PALETTE[4], gain:-1.2, channels:2, input:'In 3-4', gen:{base:-30, vary:3, beat:1},
+        sends: [{bus: rv.id, level: -22, post: true}]}),
+      rv, dl,
     ];
-    S.tracks[1].chain[2].bypass = true;
+    S.tracks[1].chain[1].bypass = true;
     S.tracks[0].chain[0].collapsed = true;
   }
   S.route = {view:'mixer', t:0, p:0}; S.sheet = null; S.confirm = null;
@@ -505,7 +549,12 @@ function scenario(name){
 }
 
 // ---------------------------------------------------------------- controls registry
-const trk = i => i === 'm' ? S.master : S.tracks[+i];
+const trk = i => i === 'm' ? S.master : i === 'pre' ? S.pre : S.tracks[+i];
+const tkey = v => (v === 'm' || v === 'pre') ? v : +v;
+const navOrder = () => { const o = S.tracks.map((_, i) => i); return S.advanced ? ['pre', ...o, 'm'] : o; };
+const busOf = sd => S.tracks.find(b => b.id === sd.bus);
+const sendersOf = b => S.tracks.filter(t => t.sends.some(sd => sd.bus === b.id));
+const hasPan = t => t.kind !== 'pre' && t.kind !== 'post';
 function ctl(key){
   const [k, a, b, c] = key.split(':');
   if (k === 't') {
@@ -517,6 +566,7 @@ function ctl(key){
     const it = trk(a).chain[+b]; const p = it.tpl.params.find(x => x.id === c);
     return {get: () => it.v[c], set: v => { it.v[c] = quantize(p, v); }, def: p.defN, fmt: () => fmtParam(p, it.v[c]), label: p.label, bipolar: p.min < 0 && p.max > 0 && p.unit !== 'dB' || (p.unit === 'dB' && p.min < 0 && p.max > 0 && p.max === -p.min)};
   }
+  if (k === 's') { const sd = trk(a).sends[+b]; return {get: () => posFromDb(sd.level), set: v => { sd.level = dbFromPos(v); }, def: posFromDb(-12), fmt: () => fmtDb(sd.level), label: 'Send ' + busOf(sd).name}; }
   if (k === 'x') return {get: () => (S.tempo - 20) / 280, set: v => { S.tempo = Math.round((20 + v * 280) * 10) / 10; }, def: 100 / 280, fmt: () => S.tempo.toFixed(1)};
 }
 function refresh(key){
@@ -540,6 +590,7 @@ function paint(el, v, c){
 
 // ---------------------------------------------------------------- html fragments
 const ICON = {
+  bus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h5l5 6h8M3 18h5l5-6"/><path d="M18 9l3 3-3 3"/></svg>',
   power:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>',
   play:'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l15 8-15 8z"/></svg>',
   stop:'<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>',
@@ -553,7 +604,7 @@ const ICON = {
 };
 function knob(key, size = 44, label = null, extra = ''){
   const c = ctl(key);
-  return `<div class="knob ${extra}" data-ctl="${key}" data-type="knob" role="slider" tabindex="0" aria-label="${esc(label || c.label)}" style="width:${Math.max(size, 56)}px">
+  return `<div class="knob ${extra}" data-ctl="${key}" data-type="knob" role="slider" tabindex="0" aria-label="${esc(label || c.label)}" style="width:${extra.includes('mini') ? 38 : size <= 32 ? 44 : Math.max(size, 56)}px">
     <svg width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">
       <circle class="trk" cx="50" cy="50" r="40" fill="none" stroke-width="9" stroke-dasharray="${SWEEP} ${C}" transform="rotate(135 50 50)" stroke-linecap="round"/>
       <circle class="val" cx="50" cy="50" r="40" fill="none" stroke-width="9" stroke-linecap="round"/>
@@ -576,14 +627,22 @@ function hfader(ti, extraCls = ''){
     <canvas class="meter" data-meter="${ti}" data-orient="h"></canvas><div class="zero"></div><div class="hthumb"></div></div>`;
 }
 const ms = (ti, master) => `<div class="ms"><button class="tog m ${trk(ti).mute ? 'on' : ''}" data-act="mute:${ti}" aria-pressed="${trk(ti).mute}">M</button>${master ? '' : `<button class="tog s ${trk(ti).solo ? 'on' : ''}" data-act="solo:${ti}" aria-pressed="${trk(ti).solo}">S</button>`}</div>`;
-const kindLabel = t => t.kind === 'midi' ? `<b>MIDI</b> · ${esc(t.input.replace('MIDI ', ''))}` : t.kind === 'audio' ? `<b>AUDIO</b> · ${esc(t.input)}` : `<b>POST</b> · Out 1-2`;
+const msInline = (ti, noSolo) => ms(ti, noSolo).replace('<div class="ms">', '').replace(/<\/div>$/, '');
+const kindLabel = t => ({
+  midi: `<b>MIDI</b> · ${esc(t.input.replace('MIDI ', ''))}`,
+  audio: `<b>AUDIO</b> · ${esc(t.input)}`,
+  bus: `<b>BUS</b> · ${sendersOf(t).length} sends`,
+  pre: `<b>INPUT</b> · ${esc(t.input)}`,
+  post: S.advanced ? '<b>OUTPUT</b> · Out 1-8' : 'Out 1-8',
+}[t.kind]);
+const pendingHtml = '<div class="pending"><div><div class="spin"></div>Creating…</div></div>';
 const ROLE_LABEL = {midi_fx:'MIDI effects', instrument:'Instrument', audio_fx:'Audio effects'};
 
 // ---------------------------------------------------------------- views
 function topbar(){
   const r = S.route, phone = S.size === 'phone';
   const masterClip = meters.get('m')?.clip;
-  const tr = S.tracks[r.t], pl = tr?.chain[r.p];
+  const tr = trk(r.t), pl = tr?.chain[r.p];
   const trans = `<div class="transport">
       ${phone ? '' : `<div class="tempo num" data-ctl="x:tempo" data-type="num" role="slider" tabindex="0" aria-label="Tempo"><span data-val="x:tempo">${S.tempo.toFixed(1)}</span><small>BPM</small></div>`}
       <button class="tbtn ${S.playing ? 'on' : ''}" data-act="play" aria-label="Play">${ICON.play}</button>
@@ -594,7 +653,7 @@ function topbar(){
   if (phone) {
     let left;
     if (r.view === 'mixer') left = `<div class="proj ptitle">${esc(S.project)}${S.dirty ? '<span class="dirty"></span>' : ''}${masterClip ? '<span class="clipdot"></span>' : ''}</div>`;
-    else if (r.view === 'track') left = `<button class="backbtn" data-go="mixer">${ICON.back}Mixer</button><div class="ptitle">${esc(tr.name)}</div>`;
+    else if (r.view === 'track') left = `<button class="backbtn" data-go="mixer">${ICON.back}Mixer</button>`;
     else left = `<button class="backbtn" data-go="track:${r.t}">${ICON.back}${esc(tr.name)}</button>`;
     return `<header class="topbar">${left}<div class="spacer"></div>${trans}</header>`;
   }
@@ -609,32 +668,45 @@ function chips(t, ti){
   const vis = t.chain.slice(0, 3).map((p, pi) => `<button class="chip ${p.bypass ? 'byp' : ''}" data-go="plugin:${ti}:${pi}">${esc(p.name)}</button>`).join('');
   return `<div class="chips">${vis}${t.chain.length > 3 ? `<button class="chip more" data-go="track:${ti}">+${t.chain.length - 3} more</button>` : ''}${t.chain.length === 0 ? '<span class="chip more">no plugins</span>' : ''}</div>`;
 }
+function sendsMini(t, ti){
+  if (t.kind !== 'audio' && t.kind !== 'midi') return '<div class="sends"></div>';
+  return `<div class="sends">${t.sends.slice(0, 2).map((sd, si) => knob(`s:${ti}:${si}`, 26, '→ ' + busOf(sd).name, 'mini')).join('')}${t.sends.length > 2 ? `<button class="chip more" data-go="track:${ti}">+${t.sends.length - 2} sends</button>` : ''}</div>`;
+}
+const panCtl = (ti, t, size = 36) => hasPan(t) ? knob(`t:${ti}:pan`, size, '') : `<div class="panph" style="height:${size + 16}px;width:${size <= 32 ? 44 : 56}px"></div>`;
 function strip(t, ti){
-  return `<div class="strip" style="--tc:${t.color}">
-    <button class="strip-name" data-go="track:${ti}">${esc(t.name)}</button>
+  const fixed = t.kind === 'pre' || t.kind === 'post';
+  const open = !fixed || S.advanced;
+  return `<div class="strip ${t.kind}" style="--tc:${t.color}">
+    <button class="strip-name" ${open ? `data-go="track:${ti}"` : 'disabled'}>${esc(t.name)}</button>
     <div class="kind">${kindLabel(t)}</div>
-    ${chips(t, ti)}
-    ${knob(`t:${ti}:pan`, 36, '')}
+    ${open ? chips(t, ti) : '<div class="chips"></div>'}
+    ${sendsMini(t, ti)}
+    ${panCtl(ti, t)}
     ${vfader(ti)}
     <div class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</div>
-    ${ms(ti)}
-    ${t.pending ? '<div class="pending"><div><div class="spin"></div>Creating…</div></div>' : ''}
+    ${ms(ti, fixed)}
+    ${t.pending ? pendingHtml : ''}
   </div>`;
 }
 function mixerView(){
+  const all = S.tracks.map((t, ti) => [t, ti]);
+  const regs = all.filter(([t]) => t.kind !== 'bus'), buses = all.filter(([t]) => t.kind === 'bus');
   if (S.size === 'phone') {
     if (!S.tracks.length) return emptyView();
-    const rows = S.tracks.map((t, ti) => `<div class="row" data-row="${ti}" style="--tc:${t.color}"><div class="stripe"></div><div>
-        <div class="row-top"><span class="nm">${esc(t.name)}</span><span class="kind">${kindLabel(t)}</span><div class="spacer"></div>${ms(ti).replace('<div class="ms">', '').replace(/<\/div>$/, '')}</div>
-        <div class="row-bot">${hfader(ti)}<span class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</span></div></div>
-        ${t.pending ? '<div class="pending"><div><div class="spin"></div>Creating…</div></div>' : ''}</div>`).join('');
-    return `<div class="rows">${rows}<button class="add-row" data-sheet="addTrack">＋ Add track</button></div>`;
+    const row = (t, ti) => `<div class="row" data-row="${ti}" style="--tc:${t.color}"><div class="stripe"></div><div>
+        <div class="row-top"><span class="nm">${esc(t.name)}</span><span class="kind">${kindLabel(t)}</span><div class="spacer"></div>${msInline(ti, t.kind === 'pre')}</div>
+        <div class="row-bot">${panCtl(ti, t, 32)}${hfader(ti)}<span class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</span></div></div>
+        ${t.pending ? pendingHtml : ''}</div>`;
+    return `<div class="rows">${S.advanced ? row(S.pre, 'pre') : ''}${regs.map(([t, ti]) => row(t, ti)).join('')}
+      <button class="add-row" data-sheet="addTrack">＋ Add track or bus</button>
+      ${buses.length ? '<div class="rowdiv">BUSES</div>' + buses.map(([t, ti]) => row(t, ti)).join('') : ''}</div>`;
   }
-  const body = S.tracks.length ? S.tracks.map(strip).join('') + `<button class="add-strip" data-sheet="addTrack"><span>＋</span>Add track</button>`
+  const body = S.tracks.length
+    ? (S.advanced ? strip(S.pre, 'pre') + '<div class="sdiv">TRACKS</div>' : '') + regs.map(([t, ti]) => strip(t, ti)).join('')
+      + `<button class="add-strip" data-sheet="addTrack"><span>＋</span>Add track<br>or bus</button>`
+      + (buses.length ? '<div class="sdiv">BUSES</div>' + buses.map(([t, ti]) => strip(t, ti)).join('') : '')
     : `<div style="flex:1">${emptyView()}</div>`;
-  return `<div class="mixer"><div class="strips" id="strips">${body}</div>
-    <div class="strip master" style="--tc:var(--text)"><button class="strip-name" disabled>Master</button><div class="kind"><b>POST</b> · Out 1-2</div>
-    ${knob('t:m:pan', 36, '')}${vfader('m')}<div class="db" data-val="t:m:gain">${fmtDb(S.master.gain)}</div>${ms('m', true)}</div></div>`;
+  return `<div class="mixer"><div class="strips" id="strips">${body}</div>${strip(S.master, 'm')}</div>`;
 }
 function emptyView(){
   return `<div class="empty"><h2>Start with a track</h2><p>Sushi is running with no tracks. Pick what you want to play through it.</p>
@@ -644,8 +716,7 @@ function emptyView(){
     </div></div>`;
 }
 function mixerDockPhone(){
-  return `<div class="dock"><div class="mdock"><span class="lbl">MASTER</span>${hfader('m')}<span class="db num" data-val="t:m:gain">${fmtDb(S.master.gain)}</span>
-    <button class="tog m ${S.master.mute ? 'on' : ''}" data-act="mute:m" style="height:36px;min-width:40px">M</button></div></div>`;
+  return `<div class="dock"><div class="mdock">${S.advanced ? '<button class="lbl" data-go="track:m" style="color:var(--accent)">MASTER ›</button>' : '<span class="lbl">MASTER</span>'}${hfader('m')}<span class="db num" data-val="t:m:gain">${fmtDb(S.master.gain)}</span>${msInline('m', true)}</div></div>`;
 }
 
 function card(t, ti, p, pi){
@@ -664,9 +735,31 @@ function card(t, ti, p, pi){
 function sectionsFor(t){
   return t.kind === 'midi' ? ['midi_fx', 'instrument', 'audio_fx'] : ['audio_fx'];
 }
+const routeIn = t => ({midi: ['MIDI IN', t.input], audio: ['AUDIO IN', t.input], bus: ['FROM SENDS', sendersOf(t).map(x => x.name).join(', ') || 'none yet'],
+  pre: ['ENGINE IN', t.input], post: ['ALL TRACKS', 'summed']}[t.kind]);
+const routeOut = t => t.kind === 'post' ? 'Out 1-8' : t.kind === 'pre' ? 'all tracks' : t.output;
+function trackHeader(ti, t){
+  const ord = navOrder(), i = ord.indexOf(ti), prev = ord[i - 1], next = ord[i + 1];
+  return `<div class="thead" style="--tc:${t.color}">
+    <button class="nav" ${prev === undefined ? 'disabled' : `data-go="track:${prev}"`} aria-label="Previous track" title="Previous track ( [ )">‹</button>
+    <i></i><span class="tn">${esc(t.name)}</span>
+    <button class="nav" ${next === undefined ? 'disabled' : `data-go="track:${next}"`} aria-label="Next track" title="Next track ( ] )">›</button>
+    <span class="kind">${kindLabel(t)}</span>
+    <div class="spacer"></div>
+    <canvas class="meter" data-meter="${ti}" data-orient="h" title="${esc(t.name)} level"></canvas>
+    <button class="mixbtn" data-act="mixpanel" aria-pressed="${S.showMix}">${S.size === 'phone' ? 'Mix' : 'Mix &amp; routing'}</button>
+  </div>`;
+}
+function sendCard(ti, sd, si){
+  const b = busOf(sd);
+  return `<div class="card send" style="--tc:${b.color}">
+    <div class="card-head"><button class="card-name" data-go="track:${S.tracks.indexOf(b)}">→ ${esc(b.name)}<small>BUS · ${esc(b.chain.map(p => p.name).join(', ') || 'no effects')}</small></button>
+      <button class="pwr" data-act="delsend:${ti}:${si}" aria-label="Remove send to ${esc(b.name)}" style="color:var(--muted)">✕</button></div>
+    <div class="sendbody">${knob(`s:${ti}:${si}`, 40, 'Level')}
+      <div class="opts prepost"><button data-act="sendmode:${ti}:${si}:pre" aria-pressed="${!sd.post}">Pre</button><button data-act="sendmode:${ti}:${si}:post" aria-pressed="${sd.post}">Post</button></div></div></div>`;
+}
 function trackView(){
-  const ti = S.route.t, t = S.tracks[ti];
-  const phone = S.size === 'phone';
+  const ti = S.route.t, t = trk(ti), phone = S.size === 'phone';
   const secs = sectionsFor(t).map(sec => {
     const items = t.chain.map((p, pi) => [p, pi]).filter(([p]) => p.tpl.role === sec);
     const cards = items.map(([p, pi]) => card(t, ti, p, pi)).join('');
@@ -675,26 +768,30 @@ function trackView(){
     const add = full ? '' : `<button class="addslot" data-sheet="browse:${ti}:${sec}" aria-label="Add ${ROLE_LABEL[sec]}">${phone ? '＋ Add ' + (sec === 'instrument' ? 'instrument' : sec === 'midi_fx' ? 'MIDI effect' : 'effect') : '＋'}</button>`;
     return `<div class="section" data-sec="${sec}"><h3>${ROLE_LABEL[sec]}</h3><div class="cards">${cards}${ghost}${add}</div></div>`;
   }).join('');
-  const io = `<div class="io"><b>${t.kind === 'midi' ? 'MIDI IN' : 'AUDIO IN'}</b><span>${esc(t.input)}</span><span class="arrow">→</span></div>`;
-  const out = `<div class="io"><span class="arrow">→</span><b>OUT</b><span>${esc(t.output)}</span></div>`;
-  const chain = `<div class="chainwrap" id="chainwrap"><div class="chain">${io}${secs}${out}</div></div>`;
-  if (phone) return `<div class="trackview" style="flex-direction:column">${chain}</div>`;
-  const insp = `<aside class="inspector" style="--tc:${t.color}">
-    <div class="insp-name"><i></i>${esc(t.name)}</div>
-    <div class="kind">${kindLabel(t)}</div>
-    <div class="swatches">${PALETTE.map(c => `<button style="--c:${c}" data-act="color:${ti}:${c}" aria-pressed="${c === t.color}" aria-label="Color"></button>`).join('')}</div>
+  const sends = t.kind === 'audio' || t.kind === 'midi'
+    ? `<div class="section" data-sec="sends"><h3>Sends</h3><div class="cards">${t.sends.map((sd, si) => sendCard(ti, sd, si)).join('')}<button class="addslot" data-sheet="addsend:${ti}" aria-label="Add send">${phone ? '＋ Add send' : '＋'}</button></div></div>` : '';
+  const [inL, inV] = routeIn(t);
+  const io = S.showMix ? `<div class="io"><b>${inL}</b><span>${esc(inV)}</span><span class="arrow">→</span></div>` : '';
+  const out = S.showMix ? `<div class="io"><span class="arrow">→</span><b>OUT</b><span>${esc(routeOut(t))}</span></div>` : '';
+  const chain = `<div class="chainwrap" id="chainwrap"><div class="chain">${io}${secs}${sends}${out}</div></div>`;
+  return `<div class="trackview">${trackHeader(ti, t)}<div class="tbody">${chain}${!phone && S.showMix ? inspector(t, ti) : ''}</div></div>`;
+}
+function inspector(t, ti){
+  const fixed = t.kind === 'pre' || t.kind === 'post';
+  const hidden = ['level meter'].concat(t.sends.length ? [`${t.sends.length} send${t.sends.length > 1 ? 's' : ''}`] : [], t.kind === 'bus' ? ['return'] : []).join(', ');
+  return `<aside class="inspector" style="--tc:${t.color}">
     <h4>Mix</h4>
-    <div class="insp-mix">${vfader(ti)}<div class="insp-side">${knob(`t:${ti}:pan`, 40)}<div class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</div>${ms(ti)}</div></div>
+    <div class="insp-mix">${vfader(ti)}<div class="insp-side">${hasPan(t) ? knob(`t:${ti}:pan`, 40) : '<span></span>'}<div class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</div>${ms(ti, fixed)}</div></div>
+    ${fixed ? '' : `<h4>Color</h4><div class="swatches">${PALETTE.map(c => `<button style="--c:${c}" data-act="color:${ti}:${c}" aria-pressed="${c === t.color}" aria-label="Color"></button>`).join('')}</div>`}
     <h4>Routing</h4>
-    <div class="route"><span>Input</span><b>${esc(t.input)}</b><span>Output</span><b>${esc(t.output)}</b><span>Channels</span><b>${t.channels === 1 ? 'Mono' : 'Stereo'}</b></div>
+    <div class="route"><span>Input</span><b>${esc(routeIn(t)[1])}</b><span>Output</span><b>${esc(routeOut(t))}</b><span>Channels</span><b>${t.channels === 1 ? 'Mono' : t.channels === 2 ? 'Stereo' : t.channels}</b><span>Hidden</span><b>${hidden}</b></div>
     <div class="spacer"></div>
-    ${S.confirm === 'deltrack' ? `<div class="confirm">Delete ${esc(t.name)} and its ${t.chain.length} plugins? <button class="yes" data-act="deltrack:${ti}">Delete</button><button class="no" data-act="cancel">Cancel</button></div>` : `<button class="danger" data-act="askdel">Delete track</button>`}
+    ${fixed ? '' : S.confirm === 'deltrack' ? `<div class="confirm">Delete ${esc(t.name)} and its ${t.chain.length} plugins? <button class="yes" data-act="deltrack:${ti}">Delete</button><button class="no" data-act="cancel">Cancel</button></div>` : `<button class="danger" data-act="askdel">Delete ${t.kind === 'bus' ? 'bus' : 'track'}</button>`}
   </aside>`;
-  return `<div class="trackview">${chain}${insp}</div>`;
 }
 function trackDockPhone(){
-  const ti = S.route.t;
-  return `<div class="dock"><div class="tdock">${hfader(ti)}<span class="db" data-val="t:${ti}:gain">${fmtDb(S.tracks[ti].gain)}</span>${ms(ti).replace('<div class="ms">', '').replace(/<\/div>$/, '')}</div></div>`;
+  const ti = S.route.t, t = trk(ti);
+  return `<div class="dock"><div class="tdock">${panCtl(ti, t, 32)}${hfader(ti)}<span class="db" data-val="t:${ti}:gain">${fmtDb(t.gain)}</span>${msInline(ti, !hasPan(t))}</div></div>`;
 }
 
 function paramCtl(ti, pi, p, it){
@@ -708,7 +805,7 @@ function paramCtl(ti, pi, p, it){
   return knob(key, phone ? 64 : 52, null, pinned ? 'pinned' : '');
 }
 function pluginView(){
-  const ti = S.route.t, pi = S.route.p, t = S.tracks[ti], it = t.chain[pi], tpl = it.tpl;
+  const ti = S.route.t, pi = S.route.p, t = trk(ti), it = t.chain[pi], tpl = it.tpl;
   const phone = S.size === 'phone';
   const q = S.search.trim().toLowerCase();
   const groups = {};
@@ -724,8 +821,9 @@ function pluginView(){
   const pinBtn = `<button class="pinbtn ghost-btn" data-act="pinmode" aria-pressed="${S.pinMode}">${S.pinMode ? 'Done choosing' : 'Choose card controls'}</button>`;
   const head = `<div class="phead">
       <button class="pwr" data-act="bypass:${ti}:${pi}" aria-pressed="${!it.bypass}" aria-label="Bypass" style="${it.bypass ? 'color:var(--faint)' : ''}">${ICON.power}</button>
-      ${phone ? '' : `<span class="pn">${esc(it.name)}<small>${esc(tpl.vendor || 'Sushi internal')} · ${tpl.type.toUpperCase()}</small></span>`}
-      ${phone ? `<span class="pn" style="font-size:17px">${esc(it.name)}</span>` : ''}
+      <button class="nav" ${pi === 0 ? 'disabled' : `data-go="plugin:${ti}:${pi - 1}"`} aria-label="Previous plugin">‹</button>
+      <span class="pn" ${phone ? 'style="font-size:17px"' : ''}>${esc(it.name)}${phone ? '' : `<small>${esc(tpl.vendor || 'Sushi internal')} · ${tpl.type.toUpperCase()}</small>`}</span>
+      <button class="nav" ${pi === t.chain.length - 1 ? 'disabled' : `data-go="plugin:${ti}:${pi + 1}"`} aria-label="Next plugin">›</button>
       ${phone || !progs ? step : ''}
       <div class="spacer"></div>
       ${phone ? '' : `<input type="search" id="psearch" placeholder="Filter parameters" value="${esc(S.search)}" aria-label="Filter parameters">`}
@@ -744,24 +842,30 @@ function sheetHtml(){
   let title = '', body = '', foot = '';
   if (kind === 'addTrack') {
     const f = S.form;
-    title = 'Add track';
-    body = `<div class="kindcards">
+    title = f.sendFrom != null ? `New bus for ${trk(f.sendFrom).name}` : 'Add track';
+    const outSel = `<label class="field"><span>Output</span><select id="f-out"><option>Out 1-2</option><option>Out 3-4</option></select></label>`;
+    body = `<div class="kindcards three">
         <button class="kindcard" data-act="fkind:audio" aria-pressed="${f.kind === 'audio'}">${ICON.audio}<b>Audio</b><span>Input → effects</span></button>
-        <button class="kindcard" data-act="fkind:midi" aria-pressed="${f.kind === 'midi'}">${ICON.midi}<b>MIDI</b><span>Keyboard → instrument → effects</span></button></div>
+        <button class="kindcard" data-act="fkind:midi" aria-pressed="${f.kind === 'midi'}">${ICON.midi}<b>MIDI</b><span>Keyboard → instrument → effects</span></button>
+        <button class="kindcard" data-act="fkind:bus" aria-pressed="${f.kind === 'bus'}">${ICON.bus}<b>Bus</b><span>Shared effects fed by sends</span></button></div>
       <label class="field"><span>Name</span><input id="f-name" value="${esc(f.name)}"></label>` +
       (f.kind === 'audio' ? `
       <div class="field"><span>Channels</span><div class="opts">${['Mono', 'Stereo'].map(o => `<button data-act="fopt:ch:${o}" aria-pressed="${f.ch === o}">${o}</button>`).join('')}</div></div>
       <div class="fieldrow"><label class="field"><span>Input</span><select id="f-in">${(f.ch === 'Mono' ? ['In 1', 'In 2', 'In 3', 'In 4', 'In 5', 'In 6', 'In 7', 'In 8'] : ['In 1-2', 'In 3-4', 'In 5-6', 'In 7-8']).map(o => `<option>${o}</option>`).join('')}</select></label>
-      <label class="field"><span>Output</span><select id="f-out"><option>Out 1-2</option><option>Out 3-4</option></select></label></div>`
-      : `
+      ${outSel}</div>`
+      : f.kind === 'midi' ? `
       <div class="fieldrow"><label class="field"><span>MIDI input</span><select id="f-port"><option>Port 0 · USB Keyboard</option><option>Port 1 · DIN In</option></select></label>
       <label class="field"><span>Channel</span><select id="f-mch"><option>Omni</option>${Array.from({length:16}, (_, i) => `<option>${i + 1}</option>`).join('')}</select></label></div>
       <div class="field"><span>Instrument</span><div class="opts">${['synth', 'sampler', 'dexed', 'surge', ''].map(k => `<button data-act="fopt:inst:${k}" aria-pressed="${f.inst === k}">${k ? esc(TPL[k].name) : 'None for now'}</button>`).join('')}</div></div>
-      <label class="field"><span>Output</span><select id="f-out"><option>Out 1-2</option><option>Out 3-4</option></select></label>`) +
-      `<p class="example" style="margin:0">The track gets a hidden level meter at the end of its chain. Inputs reported by Sushi: 8 in · 8 out.</p>`;
-    foot = `<button class="secondary" data-act="close">Cancel</button><button class="primary" data-act="create">Create ${f.kind === 'midi' ? 'MIDI' : 'audio'} track</button>`;
+      ${outSel}`
+      : `
+      <div class="field"><span>First effect</span><div class="opts">${['dragon', 'reverb', 'delay', 'chorus', ''].map(k => `<button data-act="fopt:fx:${k}" aria-pressed="${f.fx === k}">${k ? esc(TPL[k].name) : 'None for now'}</button>`).join('')}</div></div>
+      ${outSel}
+      <p class="example" style="margin:0">A bus has no audio input of its own. Tracks feed it from the Sends section in Track view.</p>`) +
+      (f.kind === 'bus' ? '' : `<p class="example" style="margin:0">The track gets a hidden level meter at the end of its chain. Inputs reported by Sushi: 8 in · 8 out.</p>`);
+    foot = `<button class="secondary" data-act="close">Cancel</button><button class="primary" data-act="create">Create ${f.kind === 'midi' ? 'MIDI track' : f.kind === 'bus' ? 'bus' : 'audio track'}</button>`;
   } else if (kind === 'browse') {
-    const t = S.tracks[+a];
+    const t = trk(a);
     title = `Add ${ROLE_LABEL[b].toLowerCase().replace(/s$/, '')} to ${t.name}`;
     const q = (S.bsearch || '').toLowerCase();
     const items = CATALOG.map(c => TPL[c.k] && {...c, tpl: TPL[c.k]}).filter(c => c.tpl.role === b && (!q || c.tpl.name.toLowerCase().includes(q)));
@@ -773,7 +877,7 @@ function sheetHtml(){
       }).join('') || '<p style="color:var(--muted)">No plugins match.</p>'}</div>
       <p class="example" style="margin:0">LV2 and VST3 entries are example scan results.</p>`;
   } else if (kind === 'programs') {
-    const it = S.tracks[+a].chain[+b];
+    const it = trk(a).chain[+b];
     title = `${it.name} programs`;
     body = `<div class="plist">${it.tpl.programs.map((n, i) => `<button class="pitem" data-act="setprog:${a}:${b}:${i}" aria-current="${i === it.program}"><span class="t"><b style="${i === it.program ? 'color:var(--accent)' : ''}">${esc(n)}</b></span>${i === it.program ? '<span class="badge">current</span>' : ''}</button>`).join('')}</div>`;
   } else if (kind === 'focus') {
@@ -783,9 +887,17 @@ function sheetHtml(){
       <div class="hfader" data-ctl="${key}" data-type="hfader" role="slider" tabindex="0" aria-label="${esc(c.label)}" style="--z:-1"><div class="hthumb"></div></div>
       <div class="hint"><span>Drag along the bar · Shift or a second finger for fine</span><span>Double-tap to reset</span></div></div>`;
     foot = `<button class="secondary" data-act="reset:${key}">Reset</button><button class="primary" data-act="close">Done</button>`;
+  } else if (kind === 'addsend') {
+    const t = trk(a), used = new Set(t.sends.map(sd => sd.bus));
+    title = `Send ${t.name} to`;
+    body = `<div class="plist tracklist">${S.tracks.filter(x => x.kind === 'bus').map(bx => used.has(bx.id)
+        ? `<div class="pitem" style="--tc:${bx.color};opacity:.5"><i></i><span class="t"><b>${esc(bx.name)}</b><small>already has a send from ${esc(t.name)}</small></span></div>`
+        : `<button class="pitem" data-act="addsend:${a}:${bx.id}" style="--tc:${bx.color}"><i></i><span class="t"><b>${esc(bx.name)}</b><small>${esc(bx.chain.map(p => p.name).join(' → ') || 'no effects')}</small></span><span class="badge">bus</span></button>`).join('')}
+      <button class="pitem" data-act="newbus:${a}"><span class="t"><b>＋ New bus…</b><small>Create a bus and send ${esc(t.name)} to it</small></span></button></div>
+      <p class="example" style="margin:0">New sends start at −12 dB, post-fader.</p>`;
   } else if (kind === 'tracks') {
     title = 'Go to track';
-    body = `<div class="plist tracklist">${S.tracks.map((t, i) => `<button class="pitem" data-go="track:${i}" style="--tc:${t.color}"><i></i><span class="t"><b>${esc(t.name)}</b><small>${t.chain.map(p => p.name).join(' → ') || 'empty'}</small></span><span class="badge">${t.kind}</span></button>`).join('') || '<p style="color:var(--muted)">No tracks yet.</p>'}</div>`;
+    body = `<div class="plist tracklist">${navOrder().map(i => [trk(i), i]).map(([t, i]) => `<button class="pitem" data-go="track:${i}" style="--tc:${t.color}"><i></i><span class="t"><b>${esc(t.name)}</b><small>${t.chain.map(p => p.name).join(' → ') || 'empty'}</small></span><span class="badge">${t.kind}</span></button>`).join('') || '<p style="color:var(--muted)">No tracks yet.</p>'}</div>`;
   } else if (kind === 'project') {
     title = 'Project';
     body = `<div class="plist">
@@ -793,6 +905,7 @@ function sheetHtml(){
       <button class="pitem" data-act="save"><span class="t"><b>Save as…</b></span></button>
       <h6>Open</h6>
       ${['Live Rig', 'Rehearsal – Keys only', 'Studio Vocal Chain'].map(n => `<button class="pitem" data-act="close"><span class="t"><b>${n}</b><small>saved 2026-10-${n.length}</small></span></button>`).join('')}
+      <h6>Advanced</h6><button class="pitem" data-act="adv" aria-pressed="${S.advanced}"><span class="t"><b>Show Input and Output tracks</b><small>Effects on all inputs before the tracks, and on all outputs after them</small></span><span class="badge">${S.advanced ? 'On' : 'Off'}</span></button>
       <h6>New</h6><button class="pitem" data-act="newproj"><span class="t"><b>Empty project</b><small>Asks before discarding unsaved changes</small></span></button></div>`;
   }
   return `<div class="scrim" data-act="scrim"><div class="sheet" role="dialog" aria-label="${esc(title)}"><div class="sheet-h"><h2>${esc(title)}</h2><button class="x" data-act="close" aria-label="Close">✕</button></div>
@@ -810,7 +923,7 @@ function render(){
   let content = v === 'mixer' ? mixerView() : v === 'track' ? trackView() : pluginView();
   let dock = '';
   if (phone && v === 'mixer') dock = mixerDockPhone();
-  if (phone && v === 'track') dock = trackDockPhone();
+  if (phone && v === 'track' && S.showMix) dock = trackDockPhone();
   const tabs = phone ? `<nav class="tabbar"><button data-go="mixer" aria-current="${v === 'mixer'}">${ICON.mixer}Mixer</button><button data-sheet="tracks" aria-current="${v !== 'mixer'}">${ICON.tracks}Tracks</button><button data-sheet="project">${ICON.proj}Project</button></nav>` : '';
   app.innerHTML = topbar() + (S.conn !== 'ok' ? '<div class="banner">Lost connection to sushi-webui · reconnecting…</div>' : '') +
     `<main class="content">${content}</main>` + dock + tabs + sheetHtml() + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
@@ -825,8 +938,8 @@ function caption(){
   const txt = {
     mixer: phone ? '<b>Mixer (phone)</b> · drag a row sideways for gain, tap a row to open the track. Master is docked at the bottom.'
                  : '<b>Mixer</b> · drag faders and pan knobs, tap a track name or plugin chip to go deeper. Double-click a control to reset it.',
-    track: phone ? '<b>Track (phone)</b> · tap a card header to collapse it, › opens the plugin, drag ⋮⋮ to reorder. The track fader is docked.'
-                 : '<b>Track</b> · the signal flows left to right. Cards show pinned controls; ＋ opens the plugin browser for that section; drag ⋮⋮ to reorder.',
+    track: phone ? '<b>Track (phone)</b> · swipe sideways or use ‹ › to change track. Tap a card header to collapse it, › opens the plugin. “Mix” shows the channel strip.'
+                 : '<b>Track</b> · ‹ › or the [ ] keys change track. Cards show pinned controls, ＋ adds a plugin or a send, drag ⋮⋮ to reorder. “Mix & routing” shows the inputs and the channel strip.',
     plugin: phone ? '<b>Plugin (phone)</b> · tap a knob for the precise focus slider, or drag it directly.'
                   : '<b>Plugin</b> · every parameter, grouped. Shift-drag for fine control. “Choose card controls” picks what the track card shows.',
   }[v];
@@ -861,26 +974,33 @@ function simulate(){                          // what sushi-webui would send: �
   tSim += 0.04;
   const anySolo = S.tracks.some(t => t.solo);
   const beatLen = 60 / S.tempo;
-  const sumPow = [0, 0];
+  const sumPow = [0, 0], busIn = new Map();
+  const lg = x => 20 * Math.log10(Math.max(x, 1e-6));
+  const post = (t, preDb, key) => {          // pre-fader peakmeter + backend fader/pan compensation
+    const m = mstate(key), [gl, gr] = chGains(t);
+    const silent = t.mute || (anySolo && !t.solo && t.kind !== 'bus');   // buses are solo-safe
+    m.t = silent || preDb <= -119 ? [-120, -120] : [preDb + lg(gl) + (Math.random() - 0.5), preDb + lg(gr) + (Math.random() - 0.5)];
+    m.t.forEach((db, c) => { if (db > -119) sumPow[c] += Math.pow(10, db / 10); if (db > 0) m.clip = true; });
+    return silent;
+  };
+  mstate('pre').t = [-16 + (Math.random() - 0.5) * 6, -17 + (Math.random() - 0.5) * 6];
   S.tracks.forEach((t, i) => {
-    const m = mstate(String(i));
-    const active = t.kind === 'audio' || S.playing;
-    const g = t.gen;
+    if (t.kind === 'bus') return;
+    const active = t.kind === 'audio' || S.playing, g = t.gen;
     let pre = -120;
     if (active && !t.pending) {
       const phase = (tSim % beatLen) / beatLen;
       const beat = g.beat ? g.beat * 22 * Math.exp(-phase * 7) : 0;
-      const swell = Math.sin(tSim * 0.7 + i) * g.vary * 0.6 + (Math.random() - 0.5) * g.vary;
-      pre = g.base + swell + beat;
-      const chainByp = t.chain.length && t.chain.every(p => p.bypass);
-      if (chainByp) pre -= 3;
+      pre = g.base + Math.sin(tSim * 0.7 + i) * g.vary * 0.6 + (Math.random() - 0.5) * g.vary + beat;
+      if (t.chain.length && t.chain.every(p => p.bypass)) pre -= 3;
     }
-    const [gl, gr] = chGains(t);
-    const silent = t.mute || (anySolo && !t.solo);
-    const post = silent ? [-120, -120] : [pre + 20 * Math.log10(Math.max(gl, 1e-6)) + (Math.random() - 0.5), pre + 20 * Math.log10(Math.max(gr, 1e-6)) + (Math.random() - 0.5)];
-    m.t = post;
-    post.forEach((db, c) => { sumPow[c] += Math.pow(10, db / 10); if (db > 0) m.clip = true; });
+    const silent = post(t, pre, String(i));
+    for (const sd of t.sends) {               // hidden send processor; post-fader = level + fader gain
+      if (pre <= -119 || (sd.post && silent)) continue;
+      busIn.set(sd.bus, (busIn.get(sd.bus) || 0) + Math.pow(10, (pre + sd.level + (sd.post ? t.gain : 0)) / 10));
+    }
   });
+  S.tracks.forEach((t, i) => { if (t.kind === 'bus') { const p = busIn.get(t.id); post(t, p ? 10 * Math.log10(p) + 3 + (Math.random() - 0.5) * 2 : -120, String(i)); } });
   const mm = mstate('m'); const [ml, mr] = chGains(S.master);
   mm.t = S.master.mute ? [-120, -120] : sumPow.map((p, c) => 10 * Math.log10(Math.max(p, 1e-12)) + 20 * Math.log10([ml, mr][c]));
   if (mm.t.some(d => d > 0) && !mm.clip) { mm.clip = true; if (!S.sheet && !drag && !reorder) render(); }
@@ -992,10 +1112,10 @@ app.addEventListener('keydown', e => {
 // drag-to-reorder within a section
 let reorder = null;
 function startReorder(e, h){
-  const [ti, pi] = h.dataset.drag.split(':').map(Number);
+  const [a0, b0] = h.dataset.drag.split(':'), ti = tkey(a0), pi = +b0;
   const cardEl = h.closest('.card'), sec = h.closest('.section');
   const siblings = [...sec.querySelectorAll('.card[data-card]')];
-  reorder = {ti, pi, cardEl, siblings, x0: e.clientX, y0: e.clientY, vert: S.size === 'phone', id: e.pointerId, snapshot: S.tracks[ti].chain.slice()};
+  reorder = {ti, pi, cardEl, siblings, x0: e.clientX, y0: e.clientY, vert: S.size === 'phone', id: e.pointerId, snapshot: trk(ti).chain.slice()};
   h.setPointerCapture(e.pointerId); e.preventDefault(); cardEl.classList.add('drag');
 }
 function moveReorder(e){
@@ -1009,7 +1129,7 @@ function endReorder(){
   const others = r.siblings.filter(s => s !== r.cardEl);
   let before = null;
   for (const s of others) { const b = s.getBoundingClientRect(); if (r.vert ? r.py < b.top + b.height / 2 : r.px < b.left + b.width / 2) { before = s; break; } }
-  const chain = S.tracks[r.ti].chain, moved = chain[r.pi];
+  const chain = trk(r.ti).chain, moved = chain[r.pi];
   const itemOf = el => r.snapshot[+el.dataset.card];   // ≈ MoveProcessorOnTrack{before_processor}
   chain.splice(r.pi, 1);
   let idx;
@@ -1023,17 +1143,18 @@ app.addEventListener('click', e => {
   const go = e.target.closest('[data-go]'), act = e.target.closest('[data-act]'), sh = e.target.closest('[data-sheet]'), row = e.target.closest('[data-row]'), ak = e.target.closest('[data-addkind]'), pin = e.target.closest('[data-pin]');
   if (pin && S.pinMode) return togglePin(pin.dataset.pin);
   if (act) return doAct(act.dataset.act, e);
-  if (go) { const [v, t, p] = go.dataset.go.split(':'); S.route = {view: v, t: +t || 0, p: +p || 0}; S.sheet = null; S.confirm = null; S.pinMode = false; S.search = ''; return render(); }
+  if (go) { const [v, t, p] = go.dataset.go.split(':'); S.route = {view: v, t: t === undefined ? 0 : tkey(t), p: +p || 0}; S.sheet = null; S.confirm = null; S.pinMode = false; S.search = ''; return render(); }
   if (sh) { openSheet(sh.dataset.sheet); return; }
   if (ak) { openSheet('addTrack', ak.dataset.addkind); return; }
-  if (row && !e.target.closest('[data-ctl],button')) { S.route = {view:'track', t: +row.dataset.row, p: 0}; render(); }
+  if (row && !e.target.closest('[data-ctl],button')) { S.route = {view:'track', t: tkey(row.dataset.row), p: 0}; render(); }
 });
-function openSheet(name, kind = 'audio'){
-  if (name === 'addTrack') { const n = S.tracks.filter(t => t.kind === kind).length + 1; S.form = {kind, name: (kind === 'midi' ? 'MIDI ' : 'Audio ') + n, ch: 'Mono', inst: 'synth'}; }
+const defName = kind => ({midi: 'MIDI ', audio: 'Audio ', bus: 'Bus '}[kind]) + (S.tracks.filter(t => t.kind === kind).length + 1);
+function openSheet(name, kind = 'audio', sendFrom = null){
+  if (name === 'addTrack') S.form = {kind, name: defName(kind), ch: 'Mono', inst: 'synth', fx: 'dragon', sendFrom};
   S.bsearch = ''; S.sheet = name; render();
 }
 function togglePin(id){
-  const it = S.tracks[S.route.t].chain[S.route.p];
+  const it = trk(S.route.t).chain[S.route.p];
   const i = it.macros.indexOf(id);
   if (i >= 0) it.macros.splice(i, 1); else if (it.macros.length < 6) it.macros.push(id); else return toast('A card shows at most 6 controls');
   render();
@@ -1055,15 +1176,21 @@ function doAct(a, e){
     case 'color': trk(x).color = y; break;
     case 'askdel': S.confirm = 'deltrack'; break;
     case 'cancel': S.confirm = null; break;
-    case 'deltrack': S.tracks.splice(+x, 1); meters.clear(); S.route = {view:'mixer', t:0, p:0}; S.confirm = null; toast('Track deleted'); return;
+    case 'deltrack': { const gone = S.tracks.splice(+x, 1)[0]; S.tracks.forEach(t => { t.sends = t.sends.filter(sd => sd.bus !== gone.id); }); } meters.clear(); S.route = {view:'mixer', t:0, p:0}; S.confirm = null; toast('Track deleted'); return;
     case 'pinmode': S.pinMode = !S.pinMode; break;
     case 'scrim': if (e.target !== e.currentTarget && e.target.closest('.sheet')) return; S.sheet = null; break;
     case 'close': S.sheet = null; break;
     case 'reset': { const c = ctl(a.slice(6)); c.set(c.def); refresh(a.slice(6)); return; }
-    case 'fkind': S.form.kind = x; S.form.name = (x === 'midi' ? 'MIDI ' : 'Audio ') + (S.tracks.filter(t => t.kind === x).length + 1); break;
+    case 'fkind': S.form.kind = x; S.form.name = defName(x); break;
     case 'fopt': S.form[x] = y; break;
     case 'create': return createTrack();
-    case 'addplug': return addPlugin(+x, y, z);
+    case 'addplug': return addPlugin(tkey(x), y, z);
+    case 'mixpanel': S.showMix = !S.showMix; render(); return;
+    case 'adv': S.advanced = !S.advanced; if (!S.advanced && (S.route.t === 'pre' || S.route.t === 'm')) S.route = {view:'mixer', t:0, p:0}; render(); return;
+    case 'delsend': trk(x).sends.splice(+y, 1); break;
+    case 'sendmode': trk(x).sends[+y].post = z === 'post'; break;
+    case 'addsend': trk(x).sends.push({bus: +y, level: -12, post: true}); S.sheet = null; break;
+    case 'newbus': openSheet('addTrack', 'bus', tkey(x)); return;
     case 'save': S.dirty = false; S.sheet = null; toast(`Saved ${S.project}`); return;
     case 'newproj': scenario('empty'); $('#scen').value = 'empty'; break;
   }
@@ -1071,21 +1198,32 @@ function doAct(a, e){
 }
 function createTrack(){
   const f = S.form; f.name = $('#f-name')?.value || f.name;
-  const inp = f.kind === 'audio' ? ($('#f-in')?.value || 'In 1') : `MIDI ${($('#f-port')?.value || 'Port 0').split(' ·')[0].toLowerCase()} · ${$('#f-mch')?.value || 'Omni'}`;
-  const chain = f.kind === 'midi' && f.inst ? [inst(f.inst)] : [];
-  const t = mkTrack(f.name, f.kind, chain, {color: PALETTE[S.tracks.length % 8], input: inp, channels: f.kind === 'audio' && f.ch === 'Mono' ? 1 : 2, pending: true,
-    gen: f.kind === 'midi' ? {base:-14, vary:6, beat:0.6} : {base:-20, vary:8, beat:0}});
-  S.tracks.push(t); S.sheet = null; render();
-  setTimeout(() => {                       // ≈ CreateTrack → TRACK_ADDED → connections → peakmeter → PROCESSOR_ADDED
+  const output = $('#f-out')?.value || 'Out 1-2';
+  let t;
+  if (f.kind === 'bus') {
+    t = mkTrack(f.name, 'bus', f.fx ? [inst(f.fx)] : [], {color: PALETTE[(S.tracks.length + 6) % 8], output, pending: true});
+    S.tracks.push(t);
+  } else {
+    const inp = f.kind === 'audio' ? ($('#f-in')?.value || 'In 1') : `MIDI ${($('#f-port')?.value || 'Port 0').split(' ·')[0].toLowerCase()} · ${$('#f-mch')?.value || 'Omni'}`;
+    t = mkTrack(f.name, f.kind, f.kind === 'midi' && f.inst ? [inst(f.inst)] : [], {color: PALETTE[S.tracks.length % 8], input: inp, output, channels: f.kind === 'audio' && f.ch === 'Mono' ? 1 : 2, pending: true,
+      gen: f.kind === 'midi' ? {base:-14, vary:6, beat:0.6} : {base:-20, vary:8, beat:0}});
+    const fb = S.tracks.findIndex(x => x.kind === 'bus');
+    S.tracks.splice(fb < 0 ? S.tracks.length : fb, 0, t);
+    if (S.route.view !== 'mixer' && typeof S.route.t === 'number' && fb >= 0 && S.route.t >= fb) S.route.t++;
+  }
+  const from = f.sendFrom != null ? trk(f.sendFrom) : null;
+  S.sheet = null; render();
+  setTimeout(() => {                       // ≈ CreateTrack → TRACK_ADDED → connections (+ return | peakmeter) → PROCESSOR_ADDED
     t.pending = false;
-    if (S.size === 'phone') S.route = {view:'track', t: S.tracks.indexOf(t), p:0};
-    render(); const s = $('#strips'); if (s) s.scrollLeft = s.scrollWidth;
+    if (from) from.sends.push({bus: t.id, level: -12, post: true});
+    else if (S.size === 'phone') S.route = {view:'track', t: S.tracks.indexOf(t), p:0};
+    render();
   }, 900);
 }
 function addPlugin(ti, sec, key){
   S.sheet = null; S.pendingPlugin = {t: ti, sec, k: key}; render();
   setTimeout(() => {                       // ≈ CreateProcessorOnTrack(before meter) → PROCESSOR_ADDED
-    const tr = S.tracks[ti]; const p = inst(key);
+    const tr = trk(ti); const p = inst(key);
     const order = sectionsFor(tr); let idx = tr.chain.length;
     for (let i = 0; i < tr.chain.length; i++) if (order.indexOf(tr.chain[i].tpl.role) > order.indexOf(sec)) { idx = i; break; }
     tr.chain.splice(idx, 0, p); S.pendingPlugin = null; S.dirty = true; render();
@@ -1095,6 +1233,26 @@ app.addEventListener('input', e => {
   if (e.target.id === 'psearch') { S.search = e.target.value; render(); }
   if (e.target.id === 'bsearch') { S.bsearch = e.target.value; render(); }
   if (e.target.id === 'f-name') S.form.name = e.target.value;
+});
+
+// swipe between tracks (phone) and [ ] keys (desktop)
+let swipe = null;
+function stepTrack(dir){
+  const ord = navOrder(), n = ord[ord.indexOf(S.route.t) + dir];
+  if (n !== undefined) { S.route = {view:'track', t: n, p: 0}; S.confirm = null; render(); }
+}
+app.addEventListener('pointerdown', e => {
+  if (S.route.view !== 'track' || S.size !== 'phone' || !e.target.closest('.chainwrap') || e.target.closest('[data-ctl],[data-drag]')) return;
+  swipe = {x: e.clientX, y: e.clientY, id: e.pointerId};
+});
+app.addEventListener('pointerup', e => {
+  if (!swipe || e.pointerId !== swipe.id) return;
+  const dx = (e.clientX - swipe.x) / frameScale, dy = (e.clientY - swipe.y) / frameScale; swipe = null;
+  if (Math.abs(dx) > 70 && Math.abs(dx) > 2 * Math.abs(dy)) stepTrack(dx < 0 ? 1 : -1);
+});
+document.addEventListener('keydown', e => {
+  if (S.route.view !== 'track' || S.sheet || e.target.closest('input,select')) return;
+  if (e.key === ']') stepTrack(1); else if (e.key === '[') stepTrack(-1);
 });
 
 // ---------------------------------------------------------------- device frames
@@ -1125,6 +1283,14 @@ $('#scen').addEventListener('change', e => { scenario(e.target.value); render();
 $('#disc').addEventListener('click', () => { S.conn = 'lost'; render(); setTimeout(() => { S.conn = 'ok'; render(); }, 3000); });
 
 scenario('live');
+{ // deep links for review, e.g. #view=track&t=0&dev=phone&mix=1&adv=1
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('adv') === '1') S.advanced = true;
+  if (h.get('mix') === '1') S.showMix = true;
+  if (h.get('dev') && DEV[h.get('dev')]) S.device = h.get('dev');
+  if (h.get('view')) S.route = {view: h.get('view'), t: tkey(h.get('t') || '0'), p: +(h.get('p') || 0)};
+  if (h.get('sheet')) S.sheet = h.get('sheet');
+}
 S.size = app.clientWidth < 600 ? 'phone' : app.clientWidth < 1024 ? 'tablet' : 'desktop';
 render();
 layoutFrame();

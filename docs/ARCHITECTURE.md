@@ -51,10 +51,13 @@ Verified against this repo:
 |------|--------|---------------|
 | `TrackType` = REGULAR / PRE / POST only | proto `TrackType` | "Audio" vs "MIDI" track is WebUI metadata |
 | `ProcessorInfo{id,label,name,parameter_count,program_count}` — no uid/path/type | proto `ProcessorInfo` | Backend keeps a processor registry (uid, type, role) |
-| No plugin enumeration RPC | — | Backend plugin catalog (§5.4) |
+| No plugin enumeration RPC | — | Backend plugin catalog (§4.10) |
 | Track params `gain` (dB −120..+24), `pan` (−1..1, only when channels ≤ 2), `mute`; multibus adds `gain_sub_N`, `pan_sub_N` | `src/engine/track.cpp:235-268` | Mixer strip controls; tracks addressed as processors in ParameterController |
 | No level parameters on tracks | `track.cpp` | Auto-insert hidden `sushi.testing.peakmeter` as last processor |
-| Track gain/pan/mute applied **after** the processor chain | `track.cpp:154-192, 380` | Peakmeter is pre-fader → backend adds fader/pan gain to get post-fader meters (§4.8) |
+| `sushi.testing.send`: passes audio through and adds a copy, at `gain` (dB −120..+24), to the return processor named by its `destination_name` property. `channel_count`, `start_channel`, `dest_channel` params | `src/plugins/send_plugin.cpp:40-62,124-200` | Bus sends: a hidden send processor per (track, bus) |
+| `sushi.testing.return`: ignores its input and outputs the sum of all its senders. Zero delay when the sender is processed before it on the same thread, otherwise one audio chunk of delay | `src/plugins/return_plugin.cpp:53-66,151` | A bus is a track whose first, hidden processor is a return. Mind the processing order (§4.7) |
+| PRE track processes the engine inputs before all tracks; POST track processes the summed engine outputs before the optional master limiter | `src/engine/audio_engine.cpp:478-493` | Input and Output (advanced) tracks; **Master fader = POST track `gain`/`mute`** |
+| Track gain/pan/mute applied **after** the processor chain | `track.cpp:154-192, 380` | Peakmeter is pre-fader → backend adds fader/pan gain to get post-fader meters (§4.9) |
 | Peakmeter outputs `level_0..15` (dB −120..+24), `clip_0..15`; controls `link_channels`, `peaks_only`, `update_rate` (/s, default 25) | `src/plugins/peak_meter_plugin.cpp:28-90` | Meter source |
 | Parameter notifications throttled to 1 per param per 40 ms | `event_dispatcher.cpp`, `MAX_PARAMETER_UPDATE_INTERVAL` | Meters ≤ 25 Hz from Sushi; UI interpolates to 60 fps |
 | `SetParameterValue` takes normalized 0..1 (clamped) | `parameter_controller.cpp:214` | UI works in normalized space; displays `formatted_value` |
@@ -129,12 +132,19 @@ type State struct {
 }
 type Track struct {
     ID TrackID; Name, Label string; Type TrackType // REGULAR/PRE/POST
-    Kind TrackKind  // AUDIO | MIDI (meta)
+    Kind TrackKind  // AUDIO | MIDI | BUS | INPUT (=PRE) | MASTER (=POST)   (meta + TrackType)
     Channels, Buses int
     Chain []ProcID  // user-visible processors only, in order
-    MeterProc ProcID // hidden
+    MeterProc ProcID // hidden, always last
+    ReturnProc ProcID // hidden, BUS only, always first
+    Sends []Send     // hidden send processors, just before MeterProc
     Color string; Solo bool; MutedByUser bool
     Inputs, Outputs []AudioConnection; MidiIn *KbdConnection
+}
+type Send struct {
+    Bus TrackID; Proc ProcID   // hidden sushi.testing.send
+    LevelDb float32            // user-facing level
+    PostFader bool             // default true; see §4.7
 }
 type Processor struct {
     ID ProcID; Name, Label string; Track TrackID
@@ -157,14 +167,24 @@ Persisted as JSON next to each project and as `current.meta.json` for the runnin
   "version": 1,
   "tracks": {
     "Guitar": { "kind": "audio", "color": "#d9a441", "order": 0, "solo": false,
-                "macros": { "Drive": ["drive", "tone", "level"] } },
-    "Synth":  { "kind": "midi",  "color": "#5aa0d8", "order": 1 }
+                "macros": { "Drive": ["drive", "tone", "level"] },
+                "sends": [ { "bus": "Reverb", "level": -12, "post": true } ] },
+    "Synth":  { "kind": "midi",  "color": "#5aa0d8", "order": 1 },
+    "Reverb": { "kind": "bus",   "color": "#4fb3b8", "order": 2 }
   },
+  "ui": { "advanced": false },
   "processors": {
     "Drive": { "uid": "sushi.brickworks.drive", "type": "internal", "role": "audio_fx" }
   }
 }
 ```
+
+**Hidden processor naming.** Hidden processors get reserved names so they can be recognised after a Sushi restart, in saved sessions, and in other tools:
+- `__meter__<track>` for the peakmeter;
+- `__return__<bus>` for a bus's return;
+- `__send__<track>__<bus>` for a send.
+
+The `__` prefix is reserved: the UI refuses user names that start with it.
 
 The processor registry is also seeded from `SaveSession` (each `TrackState.processors[]` carries `uid`, `path`, `type`), so tracks created outside the WebUI (e.g. from a Sushi JSON config) still get uid/role information. Roles for unknown plugins default to `audio_fx`.
 
@@ -179,20 +199,50 @@ All ops are serialized through a single op queue (prevents interleaved graph edi
 | **MovePlugin**(proc, index) | `MoveProcessorOnTrack{processor, source_track, dest_track, position}` (validated against section rules) |
 | **RemovePlugin** | `DeleteProcessorFromTrack` |
 | **RemoveTrack** | `DeleteProcessorFromTrack` for each (incl. meter) → `DeleteTrack` |
-| **SetParam**(key, norm) | `SetParameterValue` (coalesced, see 4.7) |
+| **SetParam**(key, norm) | `SetParameterValue` (coalesced, see §4.8) |
 | **SetBypass / SetProgram** | `SetProcessorBypassState` / `SetProcessorProgram` |
-| **Solo**(track, on) | compute effective mutes: soloed set non-empty ⇒ every non-soloed track `mute=1`; else restore `MutedByUser`. Writes via `SetParameterValue` on track `mute`. Sushi's `mute` therefore = `MutedByUser OR (soloActive AND !Solo)` |
+| **Solo**(track, on) | Additive solo. If any track is soloed, every non-soloed **audio/MIDI** track gets `mute=1`; otherwise each track's `MutedByUser` is restored. Buses, Input and Master are solo-safe, so they are never muted by solo. Applied with `SetParameterValue` on each track's `mute`, so Sushi's `mute` = `MutedByUser OR (soloActive AND kind∈{audio,midi} AND !Solo)` |
+| **AddBus**(name, firstFx?, outputs[]) | `CreateTrack{channels: 2}` → await → **no** input connections → `CreateProcessorOnTrack{uid: sushi.testing.return, name: __return__<bus>, add_to_back}` → output connections → peakmeter → optional first FX before the meter |
+| **AddSend**(track, bus, levelDb=−12, post=true) | `CreateProcessorOnTrack{uid: sushi.testing.send, name: __send__<track>__<bus>, before_processor: meter}` → `SetPropertyValue(destination_name = "__return__<bus>")` → set `channel_count`=track output channels (2), `start_channel`=0, `dest_channel`=0 → set `gain` (§4.7) |
+| **SetSend**(track, bus, levelDb, post) | recompute and write the send's `gain` (coalesced like any param write) |
+| **RemoveSend** | `DeleteProcessorFromTrack(send)` |
+| **RemoveBus** | RemoveSend for every sender → delete return, chain, meter → `DeleteTrack` |
+| **EnsureMaster** (startup) | if Sushi has no POST track: `CreatePostTrack{name: "Master"}` → peakmeter. The Master fader is the POST track's `gain`/`mute` (no pan: it has >2 channels) |
+| **EnsureInput** (on demand) | PRE track created with `CreatePreTrack` only when the user adds the first plugin to Input in advanced mode |
 | **Transport** | `SetTempo`, `SetPlayingMode`, `SetSyncMode`, `SetTimeSignature` |
 | **SaveProject / LoadProject** | `SaveSession` → write `.sushiproj`; `RestoreSession` → resync |
 
 **Section rules (MIDI tracks)**: chain = `[midi_fx…] [instrument (0..1)] [audio_fx…]`. Rule enforced in UI and validated in `ops` using processor roles. Audio tracks: `[audio_fx…]` only (instruments and MIDI fx rejected).
 
-### 4.7 Parameter write path and echo handling
+### 4.7 Buses, sends, Input and Master
+- **Mapping:**
+  - A UI *bus* is a REGULAR track whose first, hidden processor is a `return`.
+  - A UI *send* is a hidden `send` processor on the source track. It sits after the user chain and before the meter, so it is post-FX.
+  - Neither is ever listed as a plugin. The model exposes them only through `Track.Sends` and `Kind=BUS`.
+- **Post-fader sends:**
+  - Inside the chain, a send is physically **pre-fader**, because track gain, pan and mute are applied after the chain (`track.cpp:154-192`).
+  - For a post-fader send (the default) the backend writes `send.gain = levelDb + trackGainDb`, and −120 dB when the track is muted, including muted by solo.
+  - It rewrites this whenever the track's gain or mute changes (on the coalescer tick, so a fader drag costs at most one extra write per 10 ms).
+  - Pan is not applied to sends (as on most consoles).
+  - Pre-fader sends write `send.gain = levelDb` and keep sending while the track is muted (monitor-mix behaviour).
+- **Processing order and latency:**
+  - A return delivers zero-latency audio only when the sender is processed before it on the same thread (`return_plugin.cpp:58-60`). Otherwise the sent audio arrives one chunk later (64 samples ≈ 1.3 ms at 48 kHz).
+  - The backend therefore keeps buses **after** all regular tracks in Sushi's track order.
+  - If Sushi can't reorder existing tracks, a track created after a bus has its sends to that bus delayed by one chunk. That is inaudible for reverb/delay buses but documented.
+  - To verify: whether Sushi processes tracks in creation order, and whether a reorder RPC is needed upstream.
+- **Channels:** buses are stereo. A mono track's send uses `channel_count=1, dest_channel=0`; the bus's FX (or the track's pan law, if we add it later) spread the signal.
+- **Input / Master (advanced):**
+  - The PRE track is shown as "Input" and the POST track as "Master" (or "Output" in advanced labels).
+  - Both can hold user FX and get a hidden meter, but no sends, pan or solo.
+  - Master's FX chain is hidden unless the advanced option is on. Its fader and mute are always available.
+- **Persistence:** `SaveSession` stores the hidden processors and the `destination_name` property, so sessions restore sends exactly. The meta sidecar stores the user-facing level and pre/post flag, because the stored `gain` is the compensated value.
+
+### 4.8 Parameter write path and echo handling
 - Client sends `set` messages as fast as the pointer moves; the client itself throttles to one per animation frame per param.
 - Backend coalescer: per `ParamKey` keep the latest value; a 10 ms ticker flushes pending writes as `SetParameterValue` (bounded concurrency). This bounds gRPC traffic regardless of client count.
 - Sushi notifies the change back (≤ 25 Hz). The model updates and the hub fans out `param` deltas to **all** subscribed clients, tagged with `src: <clientId>` when the most recent write to that param came from that client within 250 ms. The originating client ignores tagged deltas *for a param it is currently dragging*; when the gesture ends it applies the last server value (authoritative). This avoids the fragile "ignore for 400 ms" timer used in scraporchestra.
 
-### 4.8 Meter pipeline
+### 4.9 Meter pipeline
 
 ```mermaid
 sequenceDiagram
@@ -215,7 +265,7 @@ sequenceDiagram
 - Bandwidth: 16 stereo tracks × 30 fps × (32 entries × 5 B + 3 B) ≈ 5 KB/s per client. Fine on any LAN.
 - CPU on Sushi side: one more parameter stream source; peakmeter cost is negligible. The meter can be disabled per track by bypassing it if CPU is critical.
 
-### 4.9 Plugin catalog
+### 4.10 Plugin catalog
 1. **Internal** (always present, uids in `src/plugins`): grouped with roles:
    - instrument: `sushi.testing.sampleplayer`, `sushi.brickworks.simple_synth`
    - midi_fx: `sushi.testing.arpeggiator`, `sushi.testing.transposer`, `sushi.testing.step_sequencer`
@@ -228,7 +278,7 @@ sequenceDiagram
 
 Catalog entry: `{id, name, vendor, uid, path, type: internal|lv2|vst3|vst2, role, tags[]}`.
 
-### 4.10 Projects
+### 4.11 Projects
 A project = `projects/<name>.sushiproj/` directory containing `session.pb` (serialized `SessionState`) and `meta.json`. Load: `RestoreSession` → full resync → apply meta by names. Also support "import Sushi JSON config" later (read-only conversion) — out of scope for v1.
 
 ## 5. Browser ↔ backend protocol
@@ -261,7 +311,10 @@ If a client sees a `rev` gap it requests `{"t":"resync"}`.
 {"t":"set","k":[12,3],"n":0.62}                        // fire-and-forget, coalesced
 {"t":"cmd","id":42,"op":"addTrack","args":{"kind":"midi","name":"Synth","midiPort":0,"midiChannel":"omni","instrument":"sushi.brickworks.simple_synth","outputs":[[0,0],[1,1]]}}
 {"t":"cmd","id":43,"op":"addPlugin","args":{"track":3,"catalogId":"int:sushi.brickworks.drive","section":"audio_fx","index":1}}
-// other ops: movePlugin, removePlugin, removeTrack, renameTrack, setTrackColor, reorderTracks,
+{"t":"cmd","id":44,"op":"addTrack","args":{"kind":"bus","name":"Reverb","firstFx":"lv2:urn:dragonfly:room","outputs":[[0,0],[1,1]]}}
+{"t":"cmd","id":45,"op":"addSend","args":{"track":3,"bus":"Reverb","levelDb":-12,"post":true}}
+{"t":"set","send":[3,"Reverb"],"db":-9.5}                // send level, coalesced like a param
+// other ops: setSendMode, removeSend, setAdvanced, movePlugin, removePlugin, removeTrack, renameTrack, setTrackColor, reorderTracks,
 //            solo, setBypass, setProgram, setMacros, setTransport, saveProject, loadProject, refreshCatalog
 ```
 
@@ -389,8 +442,10 @@ LAN-only tool. Binds to all interfaces by default (needed for phones) with optio
 
 ## 11. Risks and open questions
 1. **Meter ids**: peakmeter is a regular processor and appears in other tools (sushi-gui) and in saved sessions — acceptable; name prefix `__meter__` lets us hide it consistently.
-2. **Solo emulation** writes `mute` on other tracks — a third-party client changing mute concurrently could fight with it. Mitigation: the backend recomputes from `MutedByUser` on every external mute change.
+2. **Solo emulation** (additive, buses solo-safe) writes `mute` on other tracks — a third-party client changing mute concurrently could fight with it. Mitigation: the backend recomputes from `MutedByUser` on every external mute change.
 3. **Multibus tracks** created outside the WebUI: show per-bus gain/pan in Track view, single meter pair per bus (peakmeter sees all channels).
-4. **Pre/Post tracks**: shown as "Input" and "Master" strips; master meter = peakmeter on the post track (created on demand if `CreatePostTrack` is allowed at runtime — to verify).
+4. **Pre/Post tracks**: Master = POST track, ensured at startup; Input = PRE track, created on demand. To verify: `CreatePostTrack`/`CreatePreTrack` at runtime while audio is running.
+7. **Send latency/order**: see §4.7. To verify: Sushi's track processing order and whether a track-reorder RPC is needed upstream.
+8. **Upstream improvements worth proposing to Sushi**: level output parameters on `Track` (removes the hidden peakmeter and the pre-fader correction); a post-fader send option or a send position after track gain (removes send gain compensation).
 5. **Plugin parameter counts** (large VST3s with 1000+ params): virtualized list + lazy value fetch on first view.
 6. Sushi notifications for `MoveProcessorOnTrack` arrive as remove+add — chain order must be re-read with `GetTrackProcessors` after moves (to verify).

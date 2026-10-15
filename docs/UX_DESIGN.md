@@ -1,6 +1,18 @@
 # Sushi WebUI — UX Design
 
-Status: **draft for review** · Companion to `ARCHITECTURE.md` · Interactive sketch: `mockups/index.html`
+Status: **draft v2, after first review** · Companion to `ARCHITECTURE.md` · Interactive sketch: `mockups/index.html`
+
+Review decisions so far (2026-10-15):
+- **Solo** is additive: several tracks can be soloed at once. Buses are solo-safe.
+- **Advanced option** "Show Input and Output tracks" exposes Sushi's pre and post tracks. It's off by default.
+- **Buses and sends** are a first-class but limited concept:
+  - A bus is an FX-only track.
+  - A track sends to a bus by name.
+  - The send and return processors stay hidden.
+- **Next/previous** controls are in Track mode on every device, plus swipe on touch.
+- **Track mode** hides the input/output blocks and the channel strip by default (behind "Mix & routing"). Mixing belongs to Mixer mode.
+- **Phone mixer** rows include pan.
+- **Later versions:** snapshots and MIDI learn.
 
 ## 1. Who and why
 
@@ -13,140 +25,244 @@ Status: **draft for review** · Companion to `ARCHITECTURE.md` · Interactive sk
 Design principles
 1. **Levels are always visible.** Every view keeps a meter for the track in focus; clipping is impossible to miss.
 2. **One thumb, one control.** On phone every control is ≥ 44 px, and drags never fight page scroll.
-3. **Three depths, same gestures.** Mixer → Track → Plugin; tap to go deeper, back/breadcrumb/swipe to go up.
-4. **Sushi is the truth.** The UI reflects confirmed engine state; pending operations are visible, never faked.
-5. **Stage-safe.** Destructive actions (delete track/plugin, load project) need confirmation; no accidental double-tap disasters.
+3. **Three depths, same gestures.** Mixer → Track → Plugin. Tap to go deeper, and use back, the breadcrumb or swipe to go up. At each depth, ‹ › move between siblings: tracks in Track mode, plugins in Plugin mode.
+4. **Each mode does one job.** The Mixer handles levels, pan, mute/solo and sends. Track mode handles the plugin chain and sends. Plugin mode handles parameters and programs. Controls from another mode are hidden unless asked for.
+5. **Sushi is the truth.** The UI reflects confirmed engine state; pending operations are visible, never faked.
+6. **Hide the plumbing.** Meters, sends and returns are Sushi processors. The UI shows them as track features, never as plugins.
+7. **Stage-safe.** Destructive actions (delete track/plugin, load project) need confirmation; no accidental double-tap disasters.
 
 ## 2. Information architecture
 
 ```
-Project ─┬─ Mixer (all tracks + Master)
-         │    └─ Track "Guitar" (chain: Gate → Drive → Cab → Reverb)
-         │          └─ Plugin "Drive" (all parameters, programs)
-         ├─ Add track sheet (Audio | MIDI)
+Project ─┬─ Mixer
+         │    ├─ [Input]          (advanced: Sushi pre track)
+         │    ├─ Tracks           (Audio | MIDI)
+         │    │    └─ Track "Guitar": chain Gate → Drive → Cab, sends → Reverb, → Delay
+         │    │          └─ Plugin "Drive": all parameters, programs
+         │    ├─ Buses            (FX only, fed by sends)
+         │    │    └─ Bus "Reverb": chain Dragonfly Room
+         │    └─ Master           (Sushi post track; its chain only in advanced mode)
+         ├─ Add sheet (Audio | MIDI | Bus)
          ├─ Plugin browser sheet (filtered by section)
-         └─ Project menu (save, save as, load, new)
+         ├─ Add-send sheet (pick a bus, or create one)
+         └─ Project menu (save, save as, open, new, Advanced: show Input/Output tracks)
 ```
 
-Global chrome (all sizes):
-- **Top bar**: project name (with unsaved dot), breadcrumb (desktop/tablet) or back + title (phone), tempo, play/stop, CPU %, connection dot.
-- Connection states: green = live, amber = reconnecting (UI dims, controls disabled), red = Sushi engine not running.
+Track kinds as the user sees them, and how each one is built in Sushi:
 
-Routes: `#/mixer`, `#/track/Guitar`, `#/track/Guitar/plugin/Drive` — bookmarkable (e.g. a phone home-screen shortcut straight into one plugin).
+| UI kind | What it is | Sushi implementation (hidden processors in *italics*) |
+|---------|-----------|-------------------------------------------------------|
+| Audio track | engine input(s) → FX → out | REGULAR track, audio input connections, chain, *send×n*, *peakmeter* |
+| MIDI track | MIDI port/channel → MIDI FX → instrument → FX → out | REGULAR track, keyboard connection, chain, *send×n*, *peakmeter* |
+| Bus | sends → FX → out | REGULAR track, no input connections, *return* first, chain, *peakmeter* |
+| Input (advanced) | FX on all engine inputs before any track | PRE track, chain, *peakmeter* |
+| Master / Output | master fader; in advanced mode also FX on all outputs | POST track (gain/mute), chain, *peakmeter* |
+
+Global chrome on every screen size:
+- **Top bar:**
+  - project name (a dot marks unsaved changes; a red dot means master clipped);
+  - a breadcrumb on desktop and tablet, or a back button on phone;
+  - tempo, play/stop and CPU %;
+  - a connection dot.
+- **Connection dot states:**
+  - green: live;
+  - amber: reconnecting (the UI dims and controls are disabled);
+  - red: Sushi engine not running.
+
+Routes are `#/mixer`, `#/track/Guitar` and `#/track/Guitar/plugin/Drive`. They can be bookmarked, for example as a phone home-screen shortcut that opens one plugin directly.
 
 ## 3. Breakpoints and layout grid
 
 | Class | Width | Mixer | Track | Plugin |
 |-------|-------|-------|-------|--------|
-| Desktop | ≥ 1024 | vertical strips, ~88 px each, horizontal scroll, Master pinned right | horizontal chain of plugin cards in sections + right inspector (track fader/meter/routing) | parameter grid (knobs, 6–8 per row) + left sidebar with programs |
-| Tablet | 600–1023 | strips ~76 px | chain cards wrap; inspector becomes bottom dock | 4–5 knobs per row, programs in header dropdown |
-| Phone portrait | < 600 | **list of track rows** with horizontal fader + meter | **vertical chain** of collapsible cards, track fader docked at bottom | 2-col big knobs; tap knob → Focus slider |
-| Phone landscape | < 600 height | compact strips (64 px), no chain chips | as tablet | 3-col knobs |
+| Desktop | ≥ 1024 | vertical strips ~92 px, horizontal scroll; groups: [Input] · Tracks · Buses; Master pinned right | header (‹ name › · meter · Mix & routing) + horizontal chain of cards in sections + Sends | parameter grid + left programs sidebar |
+| Tablet | 600–1023 | strips ~80 px | as desktop, cards scroll horizontally | 4–5 knobs per row, programs in header |
+| Phone portrait | < 600 | **list rows**: name · kind · M S / pan · horizontal fader+meter · dB | header + **vertical chain** of collapsible cards; swipe between tracks | 2-col big knobs; tap knob → Focus slider |
+| Phone landscape | height < 520 | compact strips: plugin chips and send knobs hidden | as tablet (full width for the chain; no side panels by default) | 3-col knobs |
 
 ## 4. Mixer mode
 
 ### Desktop / tablet
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ ● Live Rig*    Mixer                         ♩ 120.0  ▶ ■   CPU 23%   ● live │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ ┌Guitar──┐┌Vocal───┐┌Synth───┐┌Drums───┐┌ ＋  ┐                 ┃┌MASTER──┐ │
-│ │▮ audio ││▮ audio ││▮ MIDI  ││▮ audio ││     │                 ┃│        │ │
-│ │Gate    ││Comp    ││Arp     ││Comp    ││ Add │                 ┃│        │ │
-│ │Drive   ││EQ      ││Synth   ││        ││track│                 ┃│        │ │
-│ │Cab +2  ││Reverb  ││Chorus  ││        ││     │                 ┃│        │ │
-│ │  (◠)   ││  (◠)   ││  (◠)   ││  (◠)   │└─────┘                 ┃│        │ │
-│ │ ║▌▌    ││ ║▌▌    ││ ║▌▌    ││ ║▌▌    │                        ┃│ ║▌▌    │ │
-│ │ ╫▌▌    ││ ║▌▌    ││ ╫▌▌    ││ ║▌▌    │                        ┃│ ╫▌▌    │ │
-│ │ ║▌▌    ││ ╫▌▌    ││ ║▌▌    ││ ╫▌▌    │                        ┃│ ║▌▌    │ │
-│ │-3.5 dB ││ 0.0 dB ││-8.0 dB ││-1.2 dB │                        ┃│-0.5 dB │ │
-│ │ [M][S] ││ [M][S] ││ [M][S] ││ [M][S] │                        ┃│  [M]   │ │
-│ └────────┘└────────┘└────────┘└────────┘                        ┃└────────┘ │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ ● Live Rig*  /  Mixer                                  ♩ 120.0  ▶ ■   CPU 23%   ●    │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│[Input]┃T┌Guitar─┐┌Vocal──┐┌Synth──┐┌  ＋   ┐┃B┌Reverb─┐┌Delay──┐            ┌Master─┐│
+│ adv.  ┃R│AUDIO  ││AUDIO  ││MIDI   ││ Add   │┃U│BUS    ││BUS    │            │OUT 1-8││
+│ only  ┃A│Gate   ││Comp   ││Arp    ││ track ││S│Dragon…││Comb D…│            │       ││
+│       ┃C│Drive  ││EQ     ││Synth  ││ or bus│┃E│       ││EQ     │            │       ││
+│       ┃K│Cab    ││       ││Chorus │└───────┘┃S│       ││       │            │       ││
+│       ┃S│(·)(·) ││(·)    ││(·)(·) │         ┃ │       ││       │            │       ││  ← send knobs:
+│       ┃ │Rev Dly││Rev    ││Rev Dly│         ┃ │       ││       │            │       ││    → Reverb, → Delay
+│       ┃ │  (◠)  ││  (◠)  ││  (◠)  │         ┃ │  (◠)  ││  (◠)  │            │       ││  ← pan
+│       ┃ │ ║▌▌   ││ ║▌▌   ││ ║▌▌   │         ┃ │ ║▌▌   ││ ║▌▌   │            │ ║▌▌   ││
+│       ┃ │ ╫▌▌   ││ ╫▌▌   ││ ╫▌▌   │         ┃ │ ╫▌▌   ││ ╫▌▌   │            │ ╫▌▌   ││
+│       ┃ │-3.5 dB││ 0.0 dB││-8.0 dB│         ┃ │-2.0 dB││-5.0 dB│            │-0.5 dB││
+│       ┃ │ [M][S]││ [M][S]││ [M][S]│         ┃ │ [M][S]││ [M][S]│            │  [M]  ││
+└──────────────────────────────────────────────────────────────────────────────────────┘
 ```
-Strip anatomy (top → bottom): color tab + name (tap = open track; long-press = rename/color/delete) · kind badge (AUDIO / MIDI + input "In 1-2" or "MIDI ch 1") · chain summary chips (max 3 + "+n"; tap chip = open that plugin directly) · pan knob · fader with meter beside it (meter shows L/R, peak-hold tick, clip LED on top) · dB readout (tap = type value on desktop) · Mute / Solo.
 
-Master strip (Sushi post track) pinned on the right with a stronger frame; no solo, no chain chips (its plugins are reachable by tapping its name).
+**Strip anatomy**, top to bottom:
+- **Colour tab and name:** tap to open the track; long-press to rename, recolour or delete.
+- **Kind badge:** AUDIO / MIDI / BUS, plus the input ("In 1", "MIDI port 0 · Omni") or, for a bus, its number of sends.
+- **Chain summary chips:** at most 3 plus "+n". Tapping a chip opens that plugin directly.
+- **Send knobs:** at most 2 mini knobs, each labelled with the bus name, plus "+n sends". This row is always reserved so faders line up across strips. It is empty on buses and is hidden on short screens.
+- **Pan knob:** absent on Input and Master, which have more than 2 channels (Sushi has no pan there). A blank placeholder of the same height keeps the strips aligned.
+- **Fader with meter:** the meter shows L/R, a peak-hold tick and a clip LED. Tap the LED to clear it.
+- **dB readout and M / S.**
+
+**Groups**, separated by thin vertical labels:
+- **Input (advanced only):** Sushi's pre track, shown first with a darker frame.
+- **TRACKS:** audio and MIDI tracks, followed by the "＋ Add track or bus" tile.
+- **BUSES:** new buses are always added at the end.
+- **Master:** pinned on the right. By default it is only a fader and mute, because the post-track chain is hidden. In advanced mode it shows its chain chips and its name opens Track mode for its effects.
+
+**Solo:**
+- Solo is additive: tap S on several tracks.
+- When anything is soloed, every non-soloed audio or MIDI track is silenced.
+- Buses are solo-safe, so a soloed guitar still has its reverb.
+- Input and Master have no solo.
 
 ### Phone portrait
 ```
 ┌──────────────────────────────┐
-│ Live Rig*         ▶  23% ●   │
+│ Live Rig*          ▶ 23%  ●  │
 ├──────────────────────────────┤
-│▮ Guitar        AUDIO   M  S  │
-│  ▬▬▬▬▬▬▬▬▬▬▬▬░░░░  -3.5 dB   │  ← horizontal fader, meter drawn inside the track
-│▮ Vocal         AUDIO   M  S  │
-│  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬░░   0.0 dB   │
-│▮ Synth         MIDI    M  S  │
-│  ▬▬▬▬▬▬▬▬░░░░░░░░  -8.0 dB   │
-│  ＋ Add track                │
+│▮ Guitar  AUDIO · IN 1  [M][S]│
+│  (◠)  ▬▬▬▬▬▬▬▬▬░░░░  -3.5 dB │  ← pan knob + horizontal fader with meter inside
+│  L20                         │
+│▮ Vocal   AUDIO · IN 2  [M][S]│
+│  (◠)  ▬▬▬▬▬▬▬▬▬▬▬░░   0.0 dB │
+│   ＋ Add track or bus         │
+│ BUSES                        │
+│▮ Reverb  BUS · 4 SENDS [M][S]│
+│  (◠)  ▬▬▬▬▬▬▬▬░░░░░  -2.0 dB │
 ├──────────────────────────────┤
-│ MASTER ▬▬▬▬▬▬▬▬▬▬▬▬░ -0.5 dB │  ← master docked at bottom
+│ MASTER ▬▬▬▬▬▬▬▬▬▬░ -0.5 dB [M]│  ← docked; “MASTER ›” opens it in advanced mode
 ├──────────────────────────────┤
-│  Mixer     Tracks    Project │  ← bottom tab bar
+│  Mixer     Tracks    Project │
 └──────────────────────────────┘
 ```
-- Row tap (outside controls) → Track mode. Fader: horizontal relative drag; the meter is rendered *behind* the fader thumb so one row shows both.
-- Pan lives in Track mode on phone (rarely changed live).
-- Swipe a row left → quick actions (Delete, Duplicate later).
+- **Opening a track:** tap the row anywhere outside its controls.
+- **Fader:** the gain fader is a horizontal relative drag, and the meter is drawn behind its thumb.
+- **Pan knob:** a 32 px knob with its value printed below. A tap opens the Focus slider (§7).
+- **Send levels** are not shown in phone rows. Edit them in Track mode under Sends.
+- **Quick actions:** swiping a row left reveals Delete.
 
-### Add-track sheet
-1. Choice: **Audio track** (mic/guitar/line input) or **MIDI track** (synth/sampler from a keyboard).
-2. Audio: name (auto "Audio 3"), mono/stereo, input channels (picker shows engine channel count from `GetInputAudioChannelCount`), output pair (default 1-2).
-3. MIDI: name, MIDI input port + channel (Omni default), **instrument** (picker of `instrument` role plugins; can be "none for now"), output pair.
-4. Create → strip appears with spinner until Sushi confirms; then the app navigates into the new Track view (desktop: stays in mixer, highlights new strip).
+### Add sheet (track or bus)
+1. Pick a kind: **Audio** (input → effects), **MIDI** (keyboard → instrument → effects) or **Bus** (shared effects fed by sends).
+2. **Audio:**
+   - name (auto "Audio 3");
+   - mono/stereo;
+   - input channels (from `GetInputAudioChannelCount`);
+   - output pair.
+3. **MIDI:**
+   - name;
+   - MIDI port and channel (Omni by default);
+   - instrument, chosen from the instrument-role plugins, or "None for now";
+   - output pair.
+4. **Bus:** name (auto "Bus 2"), first effect (reverb, delay, chorus or none) and output pair. Stereo is assumed.
+5. **Create:**
+   - The strip appears with a spinner until Sushi confirms it.
+   - On a phone, a new track opens in Track mode.
+   - On desktop the view stays in the mixer.
+   - If the bus was created from a track's "New bus…" action, the app returns to that track with a send already added.
 
 ### Empty project
-A single centered call to action: "Add your first track" with the two choices visible as large cards (Audio / MIDI). Master strip already visible.
+A centred call to action, "Start with a track", with Audio and MIDI as two large cards. Buses aren't offered here because they need tracks to feed them. Master is already visible.
 
 ## 5. Track mode
 
-### Desktop
+Track mode is for the plugin chain and sends only. It shows the chain at full width, with no input block and no channel strip by default.
+
+### Desktop / tablet / phone landscape
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ Live Rig* › Mixer › Synth                        ♩120  ▶ ■   CPU 23%  ● live │
-├──────────────────────────────────────────────────────────────────────┬───────┤
-│ MIDI IN  ┊ MIDI FX            ┊ INSTRUMENT         ┊ AUDIO FX          │ Synth │
-│ port 0   ┊ ┌Arpeggiator─┐ ＋  ┊ ┌Simple Synth──┐   ┊ ┌Chorus──┐ ┌Rev┐ ＋│ (◠)pan│
-│ ch Omni  ┊ │⏻  Prog: —  │     ┊ │⏻ Prog: Pad ▾ │   ┊ │⏻       │ │⏻  │  │ ║▌▌  │
-│  ──▶     ┊ │(◠)(◠)(◠)   │     ┊ │(◠)(◠)(◠)(◠)  │   ┊ │(◠)(◠)  │ │(◠)│  │ ╫▌▌  │
-│          ┊ │rate range  │     ┊ │cut res atk rel│  ┊ │rate dep│ │mix│  │ ║▌▌  │
-│          ┊ └────────────┘     ┊ └──────────────┘   ┊ └────────┘ └───┘  │-8 dB  │
-│          ┊                    ┊                    ┊           ──▶ OUT 1-2 [M][S]│
-└──────────────────────────────────────────────────────────────────────┴───────┘
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ Live Rig* / Mixer › Synth                               ♩ 120.0  ▶ ■   CPU 23%   ●   │
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│ [‹] ■ Synth [›]  MIDI · PORT 0 · OMNI                    ▬▬▬▬▬░░  [Mix & routing]    │  ← track header
+├──────────────────────────────────────────────────────────────────────────────────────┤
+│ MIDI EFFECTS       ┊ INSTRUMENT          ┊ AUDIO EFFECTS     ┊ SENDS                  │
+│ ┌Arpeggiator─┐ ＋  ┊ ┌Simple Synth──┐    ┊ ┌Chorus──┐  ＋    ┊ ┌→ Reverb─┐┌→ Delay─┐ ＋│
+│ │⏻        ⋮⋮ │     ┊ │⏻ ‹Warm Pad› ⋮⋮│    ┊ │⏻     ⋮⋮│       ┊ │ (◠) Pre ││(◠) Pre │  │
+│ │(◠)(◠)      │     ┊ │(◠)(◠)(◠)     │    ┊ │(◠)(◠)  │       ┊ │ Level Post││Level Post│ │
+│ └────────────┘     ┊ └──────────────┘    ┊ └────────┘       ┊ └─────✕──┘└────✕───┘  │
+└──────────────────────────────────────────────────────────────────────────────────────┘
 ```
-- Signal flows left → right; section headers are labels on a thin rail. Audio tracks show `AUDIO IN (1-2)` → `FX` → `OUT`.
-- **Plugin card**: name (tap = Plugin mode), power/bypass toggle (bypassed card dims), program selector (if `program_count > 0`), 2–6 **macro knobs** (default: first automatable FLOAT params; editable via "Pin to card" in Plugin mode), drag handle for reorder.
-- **＋ slots** at end of each section (and between cards on hover) open the plugin browser filtered by that section's role. On MIDI tracks the Instrument section accepts exactly one plugin; replacing it asks for confirmation.
-- Reorder by dragging cards within their section; invalid drop targets are not highlighted.
-- Card overflow menu: Replace…, Delete, Duplicate (later), Reset parameters (later).
-- **Inspector** (right): track name/color, pan, fader + meter, M/S, routing (input/output channels, MIDI port/channel), delete track.
+
+**Track header**, always visible:
+- ‹ previous track and › next track buttons. On desktop the `[` and `]` keys do the same; on touch, swipe the chain area horizontally (more than 70 px, mostly horizontal).
+- The order is the mixer order: [Input] → tracks → buses → [Master], with Input and Master included only in advanced mode.
+- The track colour, name and kind badge.
+- A compact horizontal meter, so levels stay visible.
+- A **Mix & routing** toggle, off by default. The setting is remembered per browser.
+
+**Mix & routing (when on):**
+- An input block on the left (AUDIO IN / MIDI IN / FROM SENDS / ENGINE IN) and an OUT block on the right of the chain.
+- A right-hand panel (desktop/tablet) with:
+  - the fader, meter, pan and M/S;
+  - colour;
+  - routing (input, output, channels);
+  - a "Hidden" line listing the hidden processors (level meter, n sends, return), for transparency;
+  - delete track or bus.
+- On phone, the same controls appear in a dock at the bottom: pan, fader with meter, dB, M/S.
+
+**Chain sections:**
+- **MIDI track:** MIDI effects → Instrument (at most one) → Audio effects → Sends.
+- **Audio track:** Audio effects → Sends.
+- **Bus, Input, Master:** Audio effects only. A bus can't send to another bus in v1.
+
+**Plugin card:**
+- Bypass toggle; a bypassed card is dimmed.
+- Name; tap it to open Plugin mode.
+- Program selector with ‹ › and a list, shown when `program_count > 0`.
+- 2–6 pinned controls, chosen in Plugin mode.
+- A ⋮⋮ drag handle. Cards can only be dropped within their own section.
+
+**＋ slot:**
+- One at the end of each section. It opens the plugin browser filtered by that section's role.
+- The Instrument section accepts one plugin only; replacing it asks for confirmation.
+
+**Send card:**
+- "→ Bus name" with the bus's effects as a subtitle. Tapping it opens that bus in Track mode.
+- Level knob in dB.
+- **Pre / Post** fader selector. Post is the default.
+- ✕ removes the send.
+
+**Sends ＋ slot:**
+- Opens the Add-send sheet, which lists buses that don't have a send from this track yet.
+- The last row, **New bus…**, opens the Add sheet in Bus mode and then adds the send.
+- New sends start at −12 dB, post-fader.
 
 ### Phone portrait
 ```
 ┌──────────────────────────────┐
-│ ‹ Mixer      Synth     MIDI  │
+│ ‹ Mixer              ▶ 23% ● │
 ├──────────────────────────────┤
-│ MIDI IN · port 0 · Omni      │
-│ ┌─ MIDI FX ────────────────┐ │
-│ │⏻ Arpeggiator        ›  ≡ │ │
-│ │  (◠) rate  (◠) range     │ │
+│ [‹] ■ Synth [›]  ▬▬░  [Mix]  │
+├──────────────────────────────┤
+│ MIDI EFFECTS                 │
+│ ┌⏻ Arpeggiator        ›  ⋮⋮┐ │
+│ │  (◠) (◠)                 │ │
 │ └──────────────────────────┘ │
-│ ┌─ INSTRUMENT ─────────────┐ │
-│ │⏻ Simple Synth  Pad ▾ › ≡ │ │
+│   ＋ Add MIDI effect          │
+│ INSTRUMENT                   │
+│ ┌⏻ Simple Synth  ‹Pad› › ⋮⋮┐ │
 │ │  (◠)cut (◠)res (◠)atk    │ │
 │ └──────────────────────────┘ │
-│ ┌─ AUDIO FX ───────────────┐ │
-│ │⏻ Chorus             ›  ≡ │ │  collapsed cards show only the header row
-│ │⏻ Reverb             ›  ≡ │ │
-│ │       ＋ Add effect       │ │
-│ └──────────────────────────┘ │
-├──────────────────────────────┤
-│ ▬▬▬▬▬▬▬▬░░░░ -8.0 dB  M  S  │  ← docked track fader+meter
+│ AUDIO EFFECTS                │
+│ ┌⏻ Chorus             ›  ⋮⋮┐ │  collapsed cards show the header only
+│   ＋ Add effect               │
+│ SENDS                        │
+│ ┌→ Reverb            ✕     ┐ │
+│ │  (◠) Level    [Pre][Post]│ │
+│   ＋ Add send                 │
 └──────────────────────────────┘
+   (dock with pan · fader · M S appears only when [Mix] is on)
 ```
-- Cards collapse/expand by tapping the header area; first card of each section expanded by default.
-- Reorder: long-press the ≡ handle, drag vertically.
+- **Collapsing:** tapping a card's header collapses or expands it. The first card of each section starts expanded.
+- **Reordering:** long-press the ⋮⋮ handle and drag vertically.
+- **Changing track:** swipe horizontally on the chain, or use the ‹ › buttons.
 
 ## 6. Plugin mode
 
@@ -155,85 +271,118 @@ A single centered call to action: "Add your first track" with the two choices vi
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ Live Rig* › Mixer › Synth › Simple Synth            ♩120 ▶ ■  CPU 23% ● live │
 ├───────────────┬──────────────────────────────────────────────────────────────┤
-│ PROGRAMS      │ ⏻ Simple Synth      ◀ Warm Pad ▶      [search params…]  ║▌▌ │
-│  Init         │ ─ Oscillator ─────────────────────────────────────────────── │
-│ ▸ Warm Pad    │  (◠)     (◠)      (◠)      [ Saw ▾ ]                          │
-│  Bright Lead  │  Pitch   Detune   PW       Waveform                           │
+│ PROGRAMS      │ ⏻ [‹] Simple Synth [›]              [filter params…]    ║▌▌  │
+│  Init         │ ─ Voice ──────────────────────────────────────────────────── │
+│ ▸ Warm Pad    │  (◠)     (◠)      (◠)                                         │
+│  Bright Lead  │  Volume  Glide    Pulse width                                 │
 │  Pluck        │ ─ Filter ─────────────────────────────────────────────────── │
-│  Bass         │  (◠)     (◠)      (◠)                                         │
-│               │  Cutoff  Reso     Env amt                                     │
-│ [Pin to card] │ ─ Envelope ───────────────────────────────────────────────── │
-│               │  (◠)     (◠)      (◠)      (◠)                                │
+│  Sub Bass     │  (◠)     (◠)                                                  │
+│               │  Cutoff  Resonance                                            │
+│ [Choose card  │ ─ Envelope ───────────────────────────────────────────────── │
+│  controls]    │  (◠)     (◠)      (◠)      (◠)                                │
 │               │  Attack  Decay    Sustain  Release                            │
 └───────────────┴──────────────────────────────────────────────────────────────┘
 ```
-- Header: bypass, name, program prev/next + current name (tap = list), parameter search, a small track meter at the right.
-- **Parameter grid**: FLOAT → knob, BOOL → toggle, INT → stepper (or dropdown if its `formatted_value` strings look enumerated, e.g. waveform), properties (strings) → text/file field. Each control shows label + `formatted_value` (Sushi's string, e.g. "1.2 kHz").
-- **Grouping**: by common name prefix (`osc_`, `filter_`, `env_`) or by the plugin's natural ordering in chunks of 8 when no prefix exists.
-- Non-automatable (output) params shown in a separate "Outputs" group as read-only values/mini meters.
-- Large plugins (100+ params): virtualized grid + search; groups collapsed by default.
-- "Pin to card": selection mode — tap knobs to choose the macros shown on the Track card.
-- Desktop extras: mouse wheel on knobs, double-click a value to type it.
+**Header:**
+- Bypass.
+- ‹ › to move to the previous or next plugin in the same track.
+- Plugin name, plus vendor and format on desktop.
+- Parameter filter.
+- The track's meter.
+
+**Parameter grid:**
+- FLOAT parameters are knobs, BOOL are toggles, and INT are steppers.
+- An INT whose `formatted_value` strings look like named choices (e.g. waveforms) becomes a dropdown.
+- Properties (strings) get a text field and a file picker.
+- Each control shows its label and Sushi's `formatted_value`, e.g. "1.2 kHz".
+
+**Groups:**
+- Parameters are grouped by a shared name prefix (`osc_`, `filter_`, `env_`).
+- If there's no prefix, they are split into chunks of 8 in the plugin's own order.
+
+**Other rules:**
+- **Outputs:** non-automatable (output) parameters appear in a separate "Outputs" group as read-only values or mini meters.
+- **Large plugins** (100+ parameters): the grid is virtualized, searchable, and groups start collapsed.
+- **"Choose card controls":** a selection mode where you tap up to 6 controls to pin them to the Track-mode card.
+- **Desktop extras:** mouse wheel on knobs, Shift for fine control, double-click to reset.
 
 ### Phone portrait
 ```
 ┌──────────────────────────────┐
-│ ‹ Synth   Simple Synth    ⏻ │
-│   ◀  Warm Pad  ▶       ║▌▌  │
+│ ‹ Synth              ▶ 23% ● │
 ├──────────────────────────────┤
-│ OSCILLATOR                   │
+│ ⏻ [‹] Simple Synth [›]  ║▌  │
+│ [‹ Warm Pad ›] [Choose…]     │
+├──────────────────────────────┤
+│ VOICE                        │
 │   ( ◠ )        ( ◠ )         │
-│   Pitch 0 st   Detune 12 ct  │
+│   Volume -8dB  Glide 0 ms    │
 │ FILTER                       │
 │   ( ◠ )        ( ◠ )         │
-│   Cutoff 1.2k  Reso 0.30     │
+│   Cutoff 1.2k  Reso 1.40     │
 └──────────────────────────────┘
        tap a knob ⇒
 ┌──────────────────────────────┐
 │  Cutoff                  ✕   │
 │         1.20 kHz             │
-│ ├────────────●──────────────┤│  ← Focus slider: full width, fine by default
-│  − fine         coarse +     │
-│  [ Reset ]                   │
+│ ├────────────●──────────────┤│  ← Focus slider: full width, relative drag
+│  Shift / 2nd finger = fine   │
+│  [ Reset ]          [ Done ] │
 └──────────────────────────────┘
 ```
-- Knobs on phone are 72 px; dragging directly on them works, but a tap opens the **Focus slider** sheet for precise control with the thumb (horizontal travel is longer than any knob drag).
 
 ## 7. Widgets — interaction spec
 
 | Widget | Size (min) | Gesture | Feedback | Reset |
 |--------|-----------|---------|----------|-------|
-| Knob | 44 px (desktop 40, phone 72 in plugin grid) | vertical drag, 200 px = full range; Shift / 2nd finger = ×0.1 fine; wheel | arc fill, value bubble during drag | double-tap → default |
-| Pan knob | 36–44 px | as knob, centre detent ±2 % | "L 30 / C / R 30" | double-tap → C |
-| Fader | 44 px wide thumb | relative drag; no jump on tap | dB readout; 0 dB tick; unity detent | double-tap → 0 dB |
-| Phone row fader | full row width, 44 px tall | horizontal relative drag; must move 6 px horizontally before capture (vertical motion scrolls list) | meter rendered inside track | double-tap → 0 dB |
-| Toggle (M/S/bypass) | 44×32 | tap | colored fill (M amber, S teal-blue, bypass dims card) | — |
-| Program selector | — | tap arrows; tap name → searchable list | name updates when Sushi confirms | — |
-| Meter | 6 px per channel (desktop), 4 px (phone) | tap clip LED to clear | green → amber (−12 dB) → red (−3 dB); peak tick holds 1.5 s; clip LED latches | — |
+| Knob | 44 px (desktop 40, phone 64 in plugin grid, 32 in phone mixer row) | vertical drag, 200 px = full range; Shift / 2nd finger = ×0.1 fine; wheel; arrow keys | arc fill, value text | double-tap → default |
+| Mini send knob | 26 px (desktop strip only) | as knob | arc only; value while dragging | double-tap → −12 dB |
+| Pan knob | 32–44 px | as knob, centre detent ±2 % | "L 30 / C / R 30" | double-tap → C |
+| Fader | 26×20 px thumb | relative drag; no jump on tap | dB readout; unity snap ±0.25 dB | double-tap → 0 dB |
+| Horizontal fader (phone rows, docks, Focus) | full width × 40 px | relative drag; captured after 6 px horizontal movement (vertical scrolls the list) | meter drawn behind thumb | double-tap → 0 dB / default |
+| Toggle (M/S/bypass/Pre-Post) | 40×30 | tap | M amber, S blue, Pre/Post amber outline, bypass dims card | — |
+| ‹ › navigation | 36×36 | tap; swipe on phone; `[` `]` keys | disabled at the ends | — |
+| Program selector | — | ‹ › or tap name → searchable list | name updates when Sushi confirms | — |
+| Meter | 14 px wide per strip pair; 12 px tall in headers | tap clip LED to clear | green → amber (−12 dB) → red (−3 dB); peak tick holds 1.5 s; clip LED latches | — |
 
-Fader law (display): position ↔ dB mapping piecewise: +24…0 dB top 25 %, 0…−20 dB 45 %, −20…−60 dB 25 %, −60…−120 dB last 5 %. The UI converts this position to dB, then to Sushi's normalized value using the param's min/max (Sushi's gain param is linear in dB over −120..+24).
+**Fader law** maps fader position to dB in four segments:
 
-Meter scale: −60 … +6 dB, tick marks at 0, −6, −12, −24, −48.
+| dB range | Share of fader travel |
+|----------|-----------------------|
+| +24 to 0 dB | top 25 % |
+| 0 to −20 dB | next 45 % |
+| −20 to −60 dB | next 25 % |
+| −60 to −120 dB | last 5 % |
+
+The UI converts the fader position to dB, then to Sushi's normalized value. The same law is used for send levels.
+
+**Meter scale:** −60 to +6 dB, with ticks at +12, +6, 0, −6, −12, −20, −40 and −60 next to the fader.
 
 ## 8. States and feedback
-- **Pending operation**: e.g. adding a plugin shows a ghost card with a spinner in the target slot; on `result.ok=false` the ghost turns into an inline error ("Sushi couldn't load 'Dexed.vst3': NOT_FOUND") with Retry/Dismiss.
-- **Reconnecting**: amber top bar, all controls disabled (50 % opacity), meters freeze at −∞.
-- **Engine missing**: full-screen message "Sushi isn't running on this device" with the address being tried.
-- **Destructive confirmation**: inline confirm in place (button turns into "Delete Guitar? Delete / Cancel"), no modal dialogs.
-- **Clip**: clip LED latches red on the strip and the track row in phone mixer; tap to clear; Master clip also shows as a red dot on the top-bar project name so it's visible from any depth.
-- **Unsaved changes**: dot after project name; Project menu offers Save.
+- **Pending operation:** e.g. adding a plugin shows a ghost card with a spinner in the target slot. If `result.ok=false`, the ghost becomes an inline error ("Sushi couldn't load 'Dexed.vst3': NOT_FOUND") with Retry and Dismiss.
+- **Reconnecting:** amber banner, all controls disabled at 50 % opacity, meters drop to −∞.
+- **Engine missing:** a full-screen message, "Sushi isn't running on this device", showing the address being tried.
+- **Destructive confirmation:** the button itself turns into a confirmation ("Delete Guitar and its 3 plugins? Delete / Cancel"), with no modal dialogs.
+- **Deleting a bus** also removes every send pointing to it. The confirmation names how many sends are affected.
+- **Clip:** the clip LED latches on the strip or row; tap to clear. A master clip also shows as a red dot next to the project name, so it's visible from any depth.
+- **Unsaved changes:** a dot after the project name; the Project menu offers Save.
 
 ## 9. Visual language
-- Dark-first, low-glare for stage (light theme optional later).
-- Neutral graphite surfaces with slight blue bias; one warm accent (amber) for interactive focus/selection; semantic meter colors (green/amber/red) kept separate from the accent.
-- Track colors: 8-color palette assigned round-robin, user-changeable; used for strip tab, chain section rail, and phone row stripe.
-- Type: condensed sans for labels (fits narrow strips), monospaced tabular figures for values.
+- **Theme:** dark-first and low-glare for stage use. A light theme may come later.
+- **Colour:**
+  - neutral graphite surfaces with a slight blue tint;
+  - one warm accent (amber) for interaction, focus and selection;
+  - meter colours (green/amber/red) kept separate from the accent.
+- **Track colours:** 8 colours, assigned in turn and changeable by the user (buses start from the end of the palette). They are used for the strip tab, the track header swatch, the phone row stripe, and the top border of send cards (in the bus's colour).
+- **Bus names** are set in italics in the mixer so buses read differently at a glance.
+- **Type:** a condensed sans for labels, so they fit narrow strips, and monospaced tabular figures for values.
 
-## 10. Open questions for review
-1. **Solo** semantics: exclusive (one at a time) or additive? Draft: additive, Alt/long-press = exclusive.
-2. Should **Pre track** ("Input") be exposed in the mixer at all, or hidden in an "Advanced" area?
-3. **Sends/returns** (`sushi.testing.send`/`return`): v1 hidden, or a simple "Send to FX bus" per strip?
-4. **Snapshots** within a project (quick recall of a set of parameter values on stage) — v2?
-5. **MIDI learn** (`ConnectCCToParameter`) from Plugin mode via long-press → "Learn MIDI CC" — v1.1 candidate.
-6. Program change from a MIDI footswitch (`ConnectPCToProcessor`) configuration UI — v1.1.
-7. Phone bottom tab bar: is a "Tracks" tab (quick switch between tracks) more useful than swipe-left/right between tracks in Track mode?
+## 10. Open questions
+1. **Send position:** sends sit at the end of the chain (post-FX). Is a "pre-FX" send position needed for any use case?
+2. **Bus → bus sends** (e.g. delay into reverb): v1 says no. Revisit if users ask.
+3. **Phone bottom tab "Tracks":** now that Track mode has ‹ › and swipe, should this tab become a quick track picker or be removed?
+4. **Mix & routing memory:** should the toggle be remembered per browser (current proposal) or per project?
+5. **Master chain in non-advanced mode:** hidden entirely (current), or show its plugins read-only?
+
+## 11. Deferred to later versions
+Snapshots (quick recall of a set of parameter values), MIDI learn (`ConnectCCToParameter`), program change from a MIDI footswitch (`ConnectPCToProcessor`), undo/redo, light theme.
