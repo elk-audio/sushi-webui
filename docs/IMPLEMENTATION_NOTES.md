@@ -54,6 +54,18 @@ These were checked with a scripted WebSocket client against the real backend:
   - `svelte-check` reports 0 errors.
   - Headless-Chrome screenshots of the Mixer, Track and Plugin views (desktop) and the Mixer and Track views (phone) rendered real backend state correctly.
 
+## ZeroMQ transport (`--transport zmq`)
+Sushi's ZeroMQ interface carries the same protobuf messages as gRPC, so `internal/sushi/zmqconn` implements `grpc.ClientConnInterface` over it and the generated clients, `sushi.Client` and the whole engine are shared. `--transport grpc` (default) or `zmq` is chosen at startup; only one is active.
+- Control is REQ/REP on `ipc:///tmp/sushi_ipc.sock`, notifications are PUB/SUB on `ipc:///tmp/sushi_pub.sock` (`--zmq-control`, `--zmq-notify`). Unix sockets: same machine only, one Sushi instance.
+- Wire ids (service, endpoint, notification code) are derived from the compiled proto descriptors; `zmqconn/wire_test.go` pins them to the numbers read from Sushi's `protoc-gen-zmq` output.
+- Sushi's REP loop stops answering for good after one malformed request, and `CvGateController` dereferences a null pointer. The client only sends well-formed requests and refuses that service.
+- Calls are serialised (one REQ socket). A timed-out call discards the socket and the next call opens a fresh one.
+- Sushi's PUB socket has a send high-water mark of 20, so bursts (our meters are parameter updates) can be dropped on Sushi's side. Not seen in tests, to be watched on real hardware.
+- A SUB socket doesn't notice Sushi going away, so a 2 s keepalive (`GetSushiVersion`) ends the streams after two misses; the engine's supervisor then reconnects as with gRPC.
+- Subscriptions are global and permanent in Sushi; the parameter blocklist is ignored.
+- Tests: `internal/sushi/fakesushi` is an in-memory Sushi served over bufconn gRPC or a fake ZeroMQ server that reproduces the quirks above. `internal/sushi/transport_test.go` runs the same checks over both; `internal/core/engine_test.go` runs the engine against both. `make test`.
+- Not verified yet against a real Sushi (libzmq interop of the pure-Go `go-zeromq/zmq4`).
+
 ## Not yet verified
 - Touch gestures (knob, fader, swipe, drag-to-reorder) on real devices; the gesture code has only been reviewed, not driven.
 - Elk Audio OS / Raspberry Pi: the `make arm64` build isn't tested on a device, and there's no systemd unit yet.

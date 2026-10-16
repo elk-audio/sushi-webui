@@ -4,7 +4,7 @@ GOBIN := $(shell go env GOPATH)/bin
 MODULE := github.com/elk-audio/sushi-webui/internal/sushirpc
 PROTO_MAP := Msushi_rpc.proto=$(MODULE),Mapi_version.proto=$(MODULE)
 
-.PHONY: all web backend run dev proto check clean arm64
+.PHONY: all web backend run dev proto test check clean arm64
 
 all: web backend
 
@@ -32,8 +32,11 @@ proto:
 		--go-grpc_out=internal/sushirpc --go-grpc_opt=paths=source_relative,$(PROTO_MAP) \
 		sushi_rpc.proto api_version.proto
 
+test:
+	go test -race ./...
+
 check:
-	go vet ./... && cd web && npm run check
+	go vet ./... && go test ./... && cd web && npm run check
 
 clean:
 	rm -rf bin web/dist/assets
