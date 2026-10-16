@@ -36,8 +36,8 @@ func (e *Engine) Command(op string, raw json.RawMessage) (map[string]any, error)
 		Kind        string   `json:"kind"`
 		Name        string   `json:"name"`
 		Channels    int      `json:"channels"`
-		Input       int      `json:"input"`
-		Output      int      `json:"output"`
+		Input       *int     `json:"input"`
+		Output      *int     `json:"output"`
 		MidiPort    int      `json:"midiPort"`
 		MidiChannel int      `json:"midiChannel"`
 		Instrument  string   `json:"instrument"`
@@ -70,6 +70,8 @@ func (e *Engine) Command(op string, raw json.RawMessage) (map[string]any, error)
 	switch op {
 	case "addTrack":
 		newID, err = e.addTrack(a.Kind, a.Name, a.Channels, a.Input, a.Output, a.MidiPort, a.MidiChannel, a.Instrument, a.Fx, a.SendFrom)
+	case "setRouting":
+		err = e.setRouting(a.Track, a.Input, a.Output)
 	case "removeTrack":
 		err = e.removeTrack(a.Track)
 	case "renameTrack":
@@ -346,7 +348,16 @@ func (e *Engine) uniqueTrackName(name string) string {
 	}
 }
 
-func (e *Engine) addTrack(kind, name string, channels, input, output, midiPort, midiCh int, instrument, fx string, sendFrom *int32) (int32, error) {
+func (e *Engine) addTrack(kind, name string, channels int, inputArg, outputArg *int, midiPort, midiCh int, instrument, fx string, sendFrom *int32) (int32, error) {
+	e.mu.Lock()
+	input, output := e.defIn, e.defOut
+	e.mu.Unlock()
+	if inputArg != nil {
+		input = *inputArg
+	}
+	if outputArg != nil {
+		output = *outputArg
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = map[string]string{"audio": "Audio", "midi": "MIDI", "bus": "Bus"}[kind]
@@ -436,6 +447,71 @@ func (e *Engine) addTrack(kind, name string, channels, input, output, midiPort, 
 		return id, e.addSend(*sendFrom, id)
 	}
 	return id, nil
+}
+
+// setRouting moves a track's engine input and/or output (first engine channel, 0-based; nil leaves it
+// as is). Stereo tracks use the pair starting there, a dual-mono track reads that one channel twice.
+func (e *Engine) setRouting(id int32, input, output *int) error {
+	e.mu.Lock()
+	t := e.tracks[id]
+	ins, outs := e.st.Sushi.Inputs, e.st.Sushi.Outputs
+	var kind string
+	var mono bool
+	if t != nil {
+		kind, mono = t.Kind, t.InMono
+	}
+	e.mu.Unlock()
+	if t == nil {
+		return userErr("that track no longer exists")
+	}
+	if kind == "pre" || kind == "post" {
+		return userErr("the Input and Master tracks always use every channel")
+	}
+	c := e.client()
+	tid := &rpc.TrackIdentifier{Id: id}
+	if input != nil {
+		if kind != "audio" {
+			return userErr("only audio tracks have an audio input")
+		}
+		in := *input
+		if in < 0 || in+map[bool]int{true: 1, false: 2}[mono] > ins {
+			return userErr("input %d isn't available (Sushi has %d inputs)", in+1, ins)
+		}
+		if !mono && in%2 != 0 {
+			return userErr("a stereo track reads an input pair (1-2, 3-4, ...)")
+		}
+		r, err := c.Routing.DisconnectAllInputsFromTrack(ctxT(), tid)
+		if err := c.Cmd("DisconnectAllInputsFromTrack", r, err); err != nil {
+			return userErr("Sushi couldn't change the input: %v", err)
+		}
+		for ch := 0; ch < 2; ch++ {
+			src := in + ch
+			if mono {
+				src = in
+			}
+			r, err := c.Routing.ConnectInputChannelToTrack(ctxT(), &rpc.AudioConnection{Track: tid, TrackChannel: int32(ch), EngineChannel: int32(src)})
+			if err := c.Cmd("ConnectInputChannelToTrack", r, err); err != nil {
+				return userErr("Sushi couldn't connect input %d: %v", src+1, err)
+			}
+		}
+	}
+	if output != nil {
+		out := *output
+		if out < 0 || out%2 != 0 || out+2 > outs {
+			return userErr("output %d-%d isn't available (Sushi has %d outputs)", out+1, out+2, outs)
+		}
+		r, err := c.Routing.DisconnectAllOutputsFromTrack(ctxT(), tid)
+		if err := c.Cmd("DisconnectAllOutputsFromTrack", r, err); err != nil {
+			return userErr("Sushi couldn't change the output: %v", err)
+		}
+		for ch := 0; ch < 2; ch++ {
+			r, err := c.Routing.ConnectOutputChannelFromTrack(ctxT(), &rpc.AudioConnection{Track: tid, TrackChannel: int32(ch), EngineChannel: int32(out + ch)})
+			if err := c.Cmd("ConnectOutputChannelFromTrack", r, err); err != nil {
+				return userErr("Sushi couldn't connect output %d: %v", out+ch+1, err)
+			}
+		}
+	}
+	return nil
 }
 
 func (e *Engine) removeTrack(id int32) error {

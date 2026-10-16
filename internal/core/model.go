@@ -71,6 +71,9 @@ type Track struct {
 	Solo     bool    `json:"solo"`
 	Input    string  `json:"input"`
 	Output   string  `json:"output"`
+	InChan   int     `json:"inChan"`  // first engine input channel (0-based), -1 when the track has no audio input
+	OutChan  int     `json:"outChan"` // first engine output channel (0-based), -1 when unconnected
+	InMono   bool    `json:"inMono"`  // both track channels read the same engine input
 	Chain    []*Proc `json:"chain"`
 	Sends    []*Send `json:"sends"`
 	Meter    int     `json:"meter"`
@@ -119,6 +122,9 @@ type SushiInfo struct {
 	Outputs    int     `json:"outputs"`
 	MidiInputs int     `json:"midiInputs"`
 	Samplerate float32 `json:"samplerate"`
+	// First engine channel (0-based) that new tracks are routed to by default (--default-input/-output).
+	DefaultInput  int `json:"defaultInput"`
+	DefaultOutput int `json:"defaultOutput"`
 }
 
 type ProjectInfo struct {

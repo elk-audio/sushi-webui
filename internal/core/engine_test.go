@@ -99,7 +99,9 @@ type rig struct {
 	zmq *fakesushi.ZMQServer // nil for gRPC
 }
 
-func startEngine(t *testing.T, transport string) *rig { return startEngineWith(t, transport, "Audio 1") }
+func startEngine(t *testing.T, transport string) *rig {
+	return startEngineWith(t, transport, "Audio 1")
+}
 
 func startEngineWith(t *testing.T, transport string, tracks ...string) *rig {
 	t.Helper()
@@ -360,4 +362,58 @@ func TestEngineHidesPlaceholderTrack(t *testing.T) {
 			eventually(t, "Guitar", func() bool { _, _, ok := state(r.e).track("Guitar"); return ok })
 		})
 	}
+}
+
+func TestEngineRoutesTracks(t *testing.T) {
+	forBoth(t, func(t *testing.T, r *rig) {
+		r.e.SetDefaultBuses(1, 2) // new tracks play to outputs 3-4
+		eventually(t, "connected", func() bool { return state(r.e).hasMaster() })
+		r.cmd(t, "addTrack", map[string]any{"kind": "audio", "name": "Guitar", "channels": 2})
+		r.cmd(t, "addTrack", map[string]any{"kind": "audio", "name": "Vox", "channels": 1, "input": 1})
+		var gid, vid int32
+		route := func(name string) (in, out int, mono bool, inTxt, outTxt string) {
+			var v struct {
+				State struct {
+					Tracks []struct {
+						Name   string `json:"name"`
+						Input  string `json:"input"`
+						Output string `json:"output"`
+						InChan int    `json:"inChan"`
+						OutCh  int    `json:"outChan"`
+						InMono bool   `json:"inMono"`
+					} `json:"tracks"`
+				} `json:"state"`
+			}
+			_ = json.Unmarshal(r.e.StateMessage(), &v)
+			for _, tr := range v.State.Tracks {
+				if tr.Name == name {
+					return tr.InChan, tr.OutCh, tr.InMono, tr.Input, tr.Output
+				}
+			}
+			return -9, -9, false, "", ""
+		}
+		eventually(t, "tracks", func() bool {
+			var a, b bool
+			gid, _, a = state(r.e).track("Guitar")
+			vid, _, b = state(r.e).track("Vox")
+			_, out, _, _, _ := route("Guitar")
+			return a && b && out == 2
+		})
+		if in, out, mono, inTxt, outTxt := route("Guitar"); in != 0 || out != 2 || mono || inTxt != "In 1-2" || outTxt != "Out 3-4" {
+			t.Fatalf("Guitar routing = %d %d %v %q %q", in, out, mono, inTxt, outTxt)
+		}
+		if in, _, mono, inTxt, _ := route("Vox"); in != 1 || !mono || inTxt != "In 2" {
+			t.Fatalf("Vox routing = %d %v %q", in, mono, inTxt)
+		}
+
+		r.cmd(t, "setRouting", map[string]any{"track": gid, "output": 0})
+		eventually(t, "Guitar to outputs 1-2", func() bool { _, out, _, _, txt := route("Guitar"); return out == 0 && txt == "Out 1-2" })
+		r.cmd(t, "setRouting", map[string]any{"track": vid, "input": 0})
+		eventually(t, "Vox to input 1", func() bool { in, _, mono, txt, _ := route("Vox"); return in == 0 && mono && txt == "In 1" })
+
+		r.cmdErr(t, "setRouting", map[string]any{"track": gid, "output": 6}) // beyond the device
+		r.cmdErr(t, "setRouting", map[string]any{"track": gid, "output": 1}) // not a pair boundary
+		r.cmdErr(t, "setRouting", map[string]any{"track": gid, "input": 1})  // stereo needs a pair
+		r.cmdErr(t, "setRouting", map[string]any{"track": state(r.e).State.Master.ID, "output": 0})
+	})
 }

@@ -44,7 +44,13 @@ func main() {
 	flag.Var(&pluginPaths, "plugin-path", "extra folder to look for the plugins in the list (repeatable)")
 	pluginList := flag.String("plugin-list", "", "categorized plugin list (JSON, sushi-gui installed_plugins.json format); default: built-in list")
 	audioDir := flag.String("audio-dir", filepath.Join(home, "Music"), "base folder for the Wav Streamer file picker (*.wav, searched 3 levels deep)")
+	defIn := flag.Int("default-input", 1, "stereo input bus new tracks read from (1 = engine inputs 1-2, 2 = 3-4, ...)")
+	defOut := flag.Int("default-output", 1, "stereo output bus new tracks play to (1 = engine outputs 1-2, 2 = 3-4, ...)")
 	flag.Parse()
+	if *defIn < 1 || *defOut < 1 {
+		fmt.Fprintln(os.Stderr, "--default-input and --default-output are bus numbers starting at 1")
+		os.Exit(2)
+	}
 
 	var lvl slog.Level
 	_ = lvl.UnmarshalText([]byte(*logLevel))
@@ -83,6 +89,7 @@ func main() {
 	}
 	eng := core.New(dialer, *dataDir, cat)
 	eng.SetAudioDir(*audioDir)
+	eng.SetDefaultBuses(*defIn, *defOut)
 	h := hub.New(eng, *dev)
 	eng.SetSink(h)
 

@@ -46,6 +46,8 @@ type Engine struct {
 	dataDir  string
 	cat      *catalog.Catalog
 	audioDir string // base folder for Wav Streamer files
+	defIn    int    // default first engine input / output channel (0-based) for new tracks
+	defOut   int
 	sink     Sink
 
 	opMu sync.Mutex // serializes graph operations and refreshes
@@ -92,6 +94,15 @@ func New(dialer sushi.Dialer, dataDir string, cat *catalog.Catalog) *Engine {
 }
 
 func (e *Engine) SetSink(s Sink) { e.sink = s }
+
+// SetDefaultBuses sets the stereo input and output bus (1-based, 1 = channels 1-2) that new tracks use.
+func (e *Engine) SetDefaultBuses(in, out int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.defIn, e.defOut = max(in-1, 0)*2, max(out-1, 0)*2
+	e.st.Sushi.DefaultInput, e.st.Sushi.DefaultOutput = e.defIn, e.defOut
+	e.stateDirty = true
+}
 
 func (e *Engine) metaPath() string { return filepath.Join(e.dataDir, "current.meta.json") }
 
@@ -166,7 +177,9 @@ func (e *Engine) session(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	info := SushiInfo{Connected: true, Version: ver.Value}
+	e.mu.Lock()
+	info := SushiInfo{Connected: true, Version: ver.Value, DefaultInput: e.defIn, DefaultOutput: e.defOut}
+	e.mu.Unlock()
 	if api, err := c.System.GetSushiApiVersion(ctxT(), sushi.Void); err == nil {
 		if !strings.HasPrefix(api.Value, "1.") {
 			slog.Warn("untested Sushi API version", "api", api.Value)
@@ -184,6 +197,18 @@ func (e *Engine) session(ctx context.Context) error {
 	if v, err := c.Transport.GetSamplerate(ctxT(), sushi.Void); err == nil {
 		info.Samplerate = v.Value
 	}
+	if info.DefaultInput+2 > max(info.Inputs, 2) || info.DefaultOutput+2 > max(info.Outputs, 2) {
+		slog.Warn("default bus is beyond what Sushi offers, using bus 1", "defaultInput", e.defIn/2+1, "defaultOutput", e.defOut/2+1, "inputs", info.Inputs, "outputs", info.Outputs)
+		if info.DefaultInput+2 > max(info.Inputs, 2) {
+			info.DefaultInput = 0
+		}
+		if info.DefaultOutput+2 > max(info.Outputs, 2) {
+			info.DefaultOutput = 0
+		}
+	}
+	e.mu.Lock()
+	e.defIn, e.defOut = info.DefaultInput, info.DefaultOutput
+	e.mu.Unlock()
 	slog.Info("connected to sushi", "version", ver.Value, "inputs", info.Inputs, "outputs", info.Outputs)
 	_, _ = c.Timing.SetTimingsEnabled(ctxT(), &rpc.GenericBoolValue{Value: true})
 
@@ -938,7 +963,8 @@ func macroIDs(p *Proc, names []string) []int32 {
 }
 
 func (e *Engine) routing(c *sushi.Client, t *Track, kbd *rpc.MidiKbdConnection) (string, string) {
-	chans := func(prefix string, conns []*rpc.AudioConnection) string {
+	t.InChan, t.OutChan, t.InMono = -1, -1, false
+	chans := func(prefix string, conns []*rpc.AudioConnection) (string, int, bool) {
 		var ch []int
 		for _, a := range conns {
 			if !slices.Contains(ch, int(a.EngineChannel)) {
@@ -948,11 +974,11 @@ func (e *Engine) routing(c *sushi.Client, t *Track, kbd *rpc.MidiKbdConnection) 
 		sort.Ints(ch)
 		switch {
 		case len(ch) == 0:
-			return "none"
+			return "none", -1, false
 		case len(ch) == 1:
-			return fmt.Sprintf("%s %d", prefix, ch[0]+1)
+			return fmt.Sprintf("%s %d", prefix, ch[0]+1), ch[0], len(conns) > 1
 		default:
-			return fmt.Sprintf("%s %d-%d", prefix, ch[0]+1, ch[len(ch)-1]+1)
+			return fmt.Sprintf("%s %d-%d", prefix, ch[0]+1, ch[len(ch)-1]+1), ch[0], false
 		}
 	}
 	e.mu.Lock()
@@ -974,11 +1000,11 @@ func (e *Engine) routing(c *sushi.Client, t *Track, kbd *rpc.MidiKbdConnection) 
 		}
 		in = fmt.Sprintf("MIDI port %d · %s", kbd.Port, chn)
 	} else if r, err := c.Routing.GetInputConnectionsForTrack(ctxT(), &rpc.TrackIdentifier{Id: t.ID}); err == nil {
-		in = chans("In", r.Connections)
+		in, t.InChan, t.InMono = chans("In", r.Connections)
 	}
 	out := "none"
 	if r, err := c.Routing.GetOutputConnectionsForTrack(ctxT(), &rpc.TrackIdentifier{Id: t.ID}); err == nil {
-		out = chans("Out", r.Connections)
+		out, t.OutChan, _ = chans("Out", r.Connections)
 	}
 	return in, out
 }

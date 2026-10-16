@@ -26,7 +26,7 @@ type Kind = 'audio' | 'midi' | 'bus' | 'pre' | 'post';
 type Role = 'audio_fx' | 'midi_fx' | 'instrument';
 
 interface State {
-  sushi: { connected: boolean; version: string; inputs: number; outputs: number; midiInputs: number; samplerate: number };
+  sushi: { connected: boolean; version: string; inputs: number; outputs: number; midiInputs: number; samplerate: number; defaultInput: number; defaultOutput: number };  // default*: first engine channel (0-based) new tracks use
   project: { name: string; dirty: boolean; list: string[] };   // list = saved project names
   ui: { advanced: boolean };
   transport: { tempo: number; playing: boolean };
@@ -44,6 +44,9 @@ interface Track {
   solo: boolean;
   input: string;              // display text, e.g. "In 1-2", "MIDI port 0 · Omni", "Sends", "In 1-8"
   output: string;             // display text, e.g. "Out 1-2"
+  inChan: number;             // first engine input channel (0-based); -1 for MIDI/bus/none
+  outChan: number;            // first engine output channel (0-based); -1 when unconnected
+  inMono: boolean;            // audio track whose two channels both read engine input `inChan`
   chain: Processor[];         // user-visible processors only (no meter/send/return)
   sends: Send[];
   meter: number;              // meter slot in binary frames, -1 if none
@@ -80,6 +83,7 @@ interface CatalogEntry { id: string; name: string; vendor: string /* top level, 
 | op | args |
 |----|------|
 | `addTrack` | `{kind:'audio'\|'midi'\|'bus', name, channels?:1\|2, input?:int (first engine input, 0-based), output?:int (first engine output), midiPort?:int, midiChannel?:int (0 = omni, 1..16), instrument?:catalogId, fx?:catalogId, sendFrom?:trackId}` |
+| `setRouting` | `{track, input?:int, output?:int}`: first engine channel (0-based). Output must be an even channel with a pair available. Input is a pair start for stereo tracks, any single channel for dual-mono ones (`inMono`); audio tracks only. Disconnects the old channels, then connects the new ones. Refused for Input/Master |
 | `removeTrack` | `{track}` |
 | `renameTrack` | `{track, name}` (1–40 characters, unique among tracks; not for Input/Master) |
 | `setColor` | `{track, color}` |
