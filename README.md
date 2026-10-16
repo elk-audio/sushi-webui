@@ -30,7 +30,9 @@ Frontend development with hot reload: `make dev`. This starts the backend with `
 | `--listen` | `:8080` | HTTP/WebSocket address |
 | `--sushi` | `localhost:51051` | Sushi gRPC address |
 | `--data-dir` | `~/.config/sushi-webui` | projects (`projects/*.sushiproj`), current metadata, `plugins.json` |
-| `--plugin-path` | — | extra folder to scan for `.vst3` / `.lv2` bundles (repeatable) |
+| `--plugin-list` | built-in list | categorized plugin list (vendor → category → plugin, sushi-gui `installed_plugins.json` format). External plugins not found on this machine are dropped at startup |
+| `--plugin-path` | — | extra folder where the listed VST2/VST3/LV2 plugins are looked for (repeatable) |
+| `--audio-dir` | `~/Music` | base folder for the Wav Streamer file picker (`*.wav`, up to 3 levels deep) |
 | `--web-dir` | — | serve the frontend from disk instead of the embedded build |
 | `--dev` | off | accept WebSocket connections from any origin (Vite proxy) |
 | `--log-level` | `info` | `debug` shows every failed parameter write |
@@ -42,7 +44,7 @@ cmd/sushi-webui/      entry point
 internal/sushi/       gRPC client helpers (async command waits, name lookups)
 internal/sushirpc/    generated stubs (make proto)
 internal/core/        state mirror, Sushi sync, meters, mute/solo, sends, operations, projects
-internal/catalog/     plugin catalog: internal list + VST3/LV2 scan + plugins.json
+internal/catalog/     plugin catalog: categorized plugin list (embedded plugins.json) filtered by what is installed
 internal/hub/         WebSocket fan-out
 web/                  Svelte 5 + TypeScript frontend (Vite)
 docs/                 ARCHITECTURE, UX_DESIGN, PROTOCOL, IMPLEMENTATION_NOTES

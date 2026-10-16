@@ -66,7 +66,7 @@ interface Processor {
   macros: number[];           // param ids pinned to the Track-mode card
 }
 interface Send { bus: number; busName: string; db: number; post: boolean }
-interface CatalogEntry { id: string; name: string; vendor: string; uid: string; path: string; type: 'internal' | 'vst2' | 'vst3' | 'lv2'; role: Role }
+interface CatalogEntry { id: string; name: string; vendor: string /* top level, e.g. "Brickworks" */; category: string /* second level, e.g. "Reverb" */; uid: string; path: string; type: 'internal' | 'vst2' | 'vst3' | 'lv2'; role: Role }
 ```
 
 ## Client → server
@@ -91,6 +91,8 @@ interface CatalogEntry { id: string; name: string; vendor: string; uid: string; 
 | `setProgram` | `{proc, program}` |
 | `setMacros` | `{proc, params:int[]}` |
 | `setProperty` | `{proc, prop, value}` |
+| `listWavs` | `{}` → result data `{files: string[]}`: `*.wav` files under the backend's `--audio-dir`, as relative paths |
+| `setWavFile` | `{proc, value}` (a path from `listWavs`) on a Wav Streamer: sets its `file` property and turns `playing` and `loop` on |
 | `addSend` / `removeSend` | `{track, bus}` |
 | `setSendMode` | `{track, bus, post}` |
 | `setAdvanced` | `{on}` |

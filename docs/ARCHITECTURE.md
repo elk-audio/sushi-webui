@@ -271,12 +271,10 @@ sequenceDiagram
    - midi_fx: `sushi.testing.arpeggiator`, `sushi.testing.transposer`, `sushi.testing.step_sequencer`
    - audio_fx: `sushi.testing.{gain, equalizer, freeverb, sample_delay, mono_summing, stereo_mixer, send, return}`, `sushi.brickworks.{bitcrusher, cab_sim, chorus, clip, comb_delay, compressor, dist, drive, eq3band, flanger, fuzz, highpass, multi_filter, noise_gate, notch, phaser, ring_mod, saturation, tremolo, vibrato, wah}`
    - hidden/utility (not offered by default): `peakmeter, passthrough, lfo, cv_to_control, control_to_cv, wav_streamer, wav_writer`
-2. **LV2**: scan `LV2_PATH` or `/usr/lib/lv2:/usr/local/lib/lv2:~/.lv2`; read each bundle's `manifest.ttl` + plugin `.ttl` with a minimal line-based Turtle reader to extract URI, `doap:name`, and `a lv2:InstrumentPlugin` / `lv2:MIDIPlugin` for role. No librdf/lilv dependency.
-3. **VST3**: scan `/usr/lib/vst3`, `/usr/local/lib/vst3`, `~/.vst3` (and `/Library/Audio/Plug-Ins/VST3` on macOS) for `*.vst3` bundles; read `Contents/Resources/moduleinfo.json` when present for class names/subcategories (`Instrument` → role). Otherwise name from bundle, role `audio_fx`, editable.
-4. **VST2**: only via `plugins.json` (no reliable metadata without loading).
-5. **`plugins.json` override** (in config dir): add/rename/hide entries, set roles, curated favourites. Same spirit as sushi-gui's `installed_plugins_target.json`.
+2. **External plugins** (LV2, VST2, VST3) come from the same categorized list and are kept only when found on disk at startup (see IMPLEMENTATION_NOTES.md).
+3. **`--plugin-list`** replaces the built-in list (the format of sushi-gui's `installed_plugins.json`).
 
-Catalog entry: `{id, name, vendor, uid, path, type: internal|lv2|vst3|vst2, role, tags[]}`.
+Catalog entry: `{id, name, vendor, category, uid, path, type: internal|lv2|vst3|vst2, role}`.
 
 ### 4.11 Projects
 A project = `projects/<name>.sushiproj/` directory containing `session.pb` (serialized `SessionState`) and `meta.json`. Load: `RestoreSession` → full resync → apply meta by names. Also support "import Sushi JSON config" later (read-only conversion) — out of scope for v1.

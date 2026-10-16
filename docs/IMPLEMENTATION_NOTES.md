@@ -12,10 +12,12 @@ Where v1 of the code differs from ARCHITECTURE.md, and what testing against Sush
 - **Renaming tracks** isn't possible: Sushi has no rename RPC. The command returns an error.
 - **Bypass and program** changes have no Sushi notification, so the backend updates its mirror after a successful call.
 - **Plugin identity:** for processors created outside the WebUI, uid/type/path come from one `SaveSession` call. The role is then looked up in the catalog.
-- **Catalog:**
-  - VST3 classes are read from `Contents/Resources/moduleinfo.json`, tolerating its trailing commas.
-  - LV2 bundles are read with a minimal line-based Turtle reader.
-  - `<data-dir>/plugins.json` can add, rename, hide or re-role entries.
+- **Catalog:** a predefined categorized list (`internal/catalog/plugins.json`, vendor → category → plugin, same format as sushi-gui's `installed_plugins.json`; `--plugin-list` replaces it).
+  - Internal plugins are always offered. LV2, VST2 and VST3 entries are kept only if found at startup: LV2 by URI in a minimal line-based Turtle scan, VST2/VST3 by file name in the plugin folders.
+  - Roles default from the category (`Generator` → instrument, `MIDI & Control` → MIDI effect, else audio effect); an item can set `"role"`.
+  - The embedded list differs from the sushi-gui original: `BW Wha` uses `sushi.brickworks.wah`, `StepSequencer` uses `sushi.testing.step_sequencer`, PeakMeter and the CV plugins are removed, Sample Delay and Stereo Mixer are added.
+- **Wav Streamer:** the file picker lists `*.wav` under `--audio-dir` (3 levels). `setWavFile` sets the `file` property and turns `playing` and `loop` on; paths outside the folder are refused.
+- **MIDI input** is mapped by `dev/run-sushi.sh` through `rt_midi_input_mappings` (first real CoreMIDI source). The backend doesn't configure it.
 
 ## Workarounds for Sushi behaviour
 1. **Mono audio tracks are created as 2-channel tracks**, with the one engine input connected to both channels (dual-mono).
