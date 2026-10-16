@@ -267,7 +267,17 @@ func (e *Engine) setupLocked() error {
 			all, _ = c.Graph.GetAllTracks(ctxT(), sushi.Void)
 		}
 	}
+	var real []*rpc.TrackInfo
 	for _, t := range all.Tracks {
+		if t.GetType().GetType() == rpc.TrackType_REGULAR && strings.HasPrefix(t.Name, prefixPlaceholder) {
+			if err := deleteSushiTrack(c, t.Id); err != nil {
+				slog.Warn("couldn't remove the placeholder track", "track", t.Name, "err", err)
+			}
+			continue
+		}
+		real = append(real, t)
+	}
+	for _, t := range real {
 		procs, err := c.Graph.GetTrackProcessors(ctxT(), &rpc.TrackIdentifier{Id: t.Id})
 		if err != nil {
 			continue
@@ -280,6 +290,21 @@ func (e *Engine) setupLocked() error {
 		}
 	}
 	return nil
+}
+
+// deleteSushiTrack deletes a track and the processors on it (hidden ones included).
+func deleteSushiTrack(c *sushi.Client, id int32) error {
+	procs, err := c.Graph.GetTrackProcessors(ctxT(), &rpc.TrackIdentifier{Id: id})
+	if err == nil {
+		for _, p := range procs.Processors {
+			r, err := c.Graph.DeleteProcessorFromTrack(ctxT(), &rpc.DeleteProcessorRequest{Processor: &rpc.ProcessorIdentifier{Id: p.Id}, Track: &rpc.TrackIdentifier{Id: id}})
+			if err := c.Cmd("DeleteProcessorFromTrack", r, err); err != nil {
+				slog.Warn("couldn't delete processor", "proc", p.Name, "err", err)
+			}
+		}
+	}
+	r, err := c.Graph.DeleteTrack(ctxT(), &rpc.TrackIdentifier{Id: id})
+	return c.Cmd("DeleteTrack", r, err)
 }
 
 func uniqueName(base string) string { return fmt.Sprintf("%s#%04x", base, rand.IntN(0x10000)) }
@@ -447,18 +472,7 @@ func (e *Engine) removeTrack(id int32) error {
 			return err
 		}
 	}
-	c := e.client()
-	procs, err := c.Graph.GetTrackProcessors(ctxT(), &rpc.TrackIdentifier{Id: id})
-	if err == nil {
-		for _, p := range procs.Processors {
-			r, err := c.Graph.DeleteProcessorFromTrack(ctxT(), &rpc.DeleteProcessorRequest{Processor: &rpc.ProcessorIdentifier{Id: p.Id}, Track: &rpc.TrackIdentifier{Id: id}})
-			if err := c.Cmd("DeleteProcessorFromTrack", r, err); err != nil {
-				slog.Warn("couldn't delete processor", "proc", p.Name, "err", err)
-			}
-		}
-	}
-	r, err := c.Graph.DeleteTrack(ctxT(), &rpc.TrackIdentifier{Id: id})
-	if err := c.Cmd("DeleteTrack", r, err); err != nil {
+	if err := deleteSushiTrack(e.client(), id); err != nil {
 		return userErr("Sushi couldn't delete %s: %v", t.Name, err)
 	}
 	e.mu.Lock()

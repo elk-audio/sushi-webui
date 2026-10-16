@@ -661,6 +661,9 @@ func (e *Engine) refreshLocked() {
 	e.mu.Unlock()
 
 	for _, ti := range all.Tracks {
+		if ti.GetType().GetType() == rpc.TrackType_REGULAR && strings.HasPrefix(ti.Name, prefixPlaceholder) {
+			continue // setup deletes it; never show it, even if that failed
+		}
 		t := &Track{ID: ti.Id, Name: ti.Name, Label: ti.Name, Channels: int(ti.Channels), Chain: []*Proc{}, Sends: []*Send{}, Meter: -1}
 		old := oldTracks[ti.Id]
 		switch ti.GetType().GetType() {
@@ -1146,7 +1149,9 @@ func (e *Engine) resetStaleMeta(c *sushi.Client) {
 		case rpc.TrackType_PRE, rpc.TrackType_POST:
 			fixed[t.Name] = true
 		default:
-			live[t.Name] = true
+			if !strings.HasPrefix(t.Name, prefixPlaceholder) {
+				live[t.Name] = true
+			}
 		}
 	}
 	e.mu.Lock()

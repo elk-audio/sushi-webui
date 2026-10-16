@@ -50,6 +50,17 @@ func (f *Fake) addTrackLocked(name string, ch int32, typ rpc.TrackType_Type) int
 	return id
 }
 
+// TrackNames lists the tracks by name, in creation order.
+func (f *Fake) TrackNames() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []string
+	for _, t := range f.tracks {
+		out = append(out, t.name)
+	}
+	return out
+}
+
 // ProcessorID returns the id of the processor with that name, or -1.
 func (f *Fake) ProcessorID(name string) int32 {
 	f.mu.Lock()

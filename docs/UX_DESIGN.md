@@ -170,6 +170,8 @@ Routes are `#/mixer`, `#/track/Guitar` and `#/track/Guitar/plugin/Drive`. They c
 
 ### Empty project
 A centred call to action, "Start with a track", with Audio and MIDI as two large cards. Buses aren't offered here because they need tracks to feed them. Master is already visible.
+Under the cards, when saved projects exist, a quiet "…or resume a saved project" link expands the list of projects in place; tapping one loads it. The project menu in the top bar is available too.
+The project starts empty because the backend deletes the placeholder track that Sushi's JSON config needs (its schema rejects an empty track list); users never see it.
 
 ## 5. Track mode
 

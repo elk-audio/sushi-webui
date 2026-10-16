@@ -32,7 +32,7 @@ Where v1 of the code differs from ARCHITECTURE.md, and what testing against Sush
      - a pure virtual call in `Track::render()` right after "Destroyed processor (Reverb)";
      - heap corruption detected by malloc inside `SessionController::_save_engine_state()`.
    - With `--coreaudio` the same full test sequence passes repeatedly. **Suggested upstream fix:** have the dummy frontend enable realtime mode while its worker thread runs.
-3. **An empty track list is rejected** by the JSON schema ("Schema validation failure at /tracks"). `dev/default.json` therefore starts with one empty stereo track, "Audio 1", plus a `post_track` named "Master".
+3. **An empty track list is rejected** by the JSON schema ("Schema validation failure at /tracks"). `dev/default.json` therefore starts with one empty stereo track named `__placeholder__`, plus a `post_track` named "Master". Sushi accepts an empty track list at runtime, so the backend deletes any `__placeholder__*` track when it connects (and again after loading a project), before the first state is sent. Any Sushi JSON config can use the same trick.
 
 ## Verified (automated, against Sushi 1.4.0 with CoreAudio)
 These were checked with a scripted WebSocket client against the real backend:

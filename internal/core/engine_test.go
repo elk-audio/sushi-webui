@@ -99,10 +99,14 @@ type rig struct {
 	zmq *fakesushi.ZMQServer // nil for gRPC
 }
 
-func startEngine(t *testing.T, transport string) *rig {
+func startEngine(t *testing.T, transport string) *rig { return startEngineWith(t, transport, "Audio 1") }
+
+func startEngineWith(t *testing.T, transport string, tracks ...string) *rig {
 	t.Helper()
 	f := fakesushi.New()
-	f.AddTrack("Audio 1", rpc.TrackType_REGULAR)
+	for _, n := range tracks {
+		f.AddTrack(n, rpc.TrackType_REGULAR)
+	}
 	r := &rig{f: f, s: &sink{}}
 	var d sushi.Dialer
 	if transport == "zmq" {
@@ -335,4 +339,25 @@ func TestEngineRemovesTracks(t *testing.T) {
 		// Master can't be deleted.
 		r.cmdErr(t, "removeTrack", map[string]any{"track": state(r.e).State.Master.ID})
 	})
+}
+
+// Sushi's JSON schema rejects an empty track list, so configs carry a placeholder track. The backend
+// deletes it before the first state goes out, and the project starts empty.
+func TestEngineHidesPlaceholderTrack(t *testing.T) {
+	for _, tr := range []string{"grpc", "zmq"} {
+		t.Run(tr, func(t *testing.T) {
+			r := startEngineWith(t, tr, "__placeholder__")
+			eventually(t, "connected", func() bool { return state(r.e).hasMaster() })
+			eventually(t, "placeholder deleted", func() bool { return r.f.ProcessorID("__placeholder__") < 0 && len(r.f.TrackNames()) == 1 })
+			if n := len(state(r.e).State.Tracks); n != 0 {
+				t.Fatalf("%d tracks in the model, want 0", n)
+			}
+			if r.s.sawJSON("__placeholder__") {
+				t.Fatal("the placeholder reached the browser")
+			}
+			// An empty project accepts its first track.
+			r.cmd(t, "addTrack", map[string]any{"kind": "audio", "name": "Guitar", "channels": 2})
+			eventually(t, "Guitar", func() bool { _, _, ok := state(r.e).track("Guitar"); return ok })
+		})
+	}
 }

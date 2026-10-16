@@ -146,6 +146,9 @@ canvas.meter{display:block}
 .empty{max-width:520px;margin:48px auto;padding:0 16px;text-align:center;display:flex;flex-direction:column;gap:16px}
 .empty h2{margin:0;font-size:24px;text-wrap:balance}
 .empty p{margin:0;color:var(--muted)}
+.resume-link{align-self:center;color:var(--muted);text-decoration:underline;text-underline-offset:3px;padding:10px 12px;min-height:44px}
+.resume-link:hover{color:var(--accent)}
+.resume{text-align:left}
 .kindcards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .kindcards.three{grid-template-columns:repeat(3,1fr)}
 .is-phone .kindcards.three{grid-template-columns:1fr}

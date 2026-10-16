@@ -158,3 +158,7 @@ const (
 	prefixReturn = "__return__"
 	prefixSend   = "__send__"
 )
+
+// prefixPlaceholder names the track a Sushi JSON config carries only because its schema rejects an
+// empty track list. The backend deletes it on connect, so the user sees an empty project.
+const prefixPlaceholder = "__placeholder__"
