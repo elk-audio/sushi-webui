@@ -2,6 +2,7 @@ package fakesushi
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -173,20 +174,123 @@ func (g *graph) CreatePostTrack(_ context.Context, in *rpc.CreatePostTrackReques
 	return g.createTrack(in.Name, 2, rpc.TrackType_POST), nil
 }
 
+func notFound() *rpc.CommandResponse {
+	return &rpc.CommandResponse{Status: &rpc.CommandStatus{Status: rpc.CommandStatus_NOT_FOUND}}
+}
+
+func (f *Fake) trackByID(id int32) *trackRec {
+	for _, t := range f.tracks {
+		if t.id == id {
+			return t
+		}
+	}
+	return nil
+}
+
+func (t *trackRec) indexOf(id int32) int {
+	for i, p := range t.procs {
+		if p.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// insertIndex resolves a ProcessorPosition on t to a slot in t.procs, or -1 when "before" isn't on the track.
+func (t *trackRec) insertIndex(pos *rpc.ProcessorPosition) int {
+	if pos == nil || pos.AddToBack || pos.BeforeProcessor == nil {
+		return len(t.procs)
+	}
+	return t.indexOf(pos.BeforeProcessor.Id)
+}
+
+func procUpdate(a rpc.ProcessorUpdate_Action, proc, track int32) proto.Message {
+	return &rpc.ProcessorUpdate{Action: a, Processor: &rpc.ProcessorIdentifier{Id: proc}, ParentTrack: &rpc.TrackIdentifier{Id: track}}
+}
+
 func (g *graph) CreateProcessorOnTrack(_ context.Context, in *rpc.CreateProcessorRequest) (*rpc.CommandResponse, error) {
 	return g.async(func() []proto.Message {
 		g.f.mu.Lock()
 		defer g.f.mu.Unlock()
-		for _, t := range g.f.tracks {
-			if t.id == in.Track.Id {
-				id := g.f.nextID
-				g.f.nextID++
-				t.procs = append(t.procs, &procRec{id: id, name: in.Name, uid: in.Uid})
-				return []proto.Message{&rpc.ProcessorUpdate{Action: rpc.ProcessorUpdate_PROCESSOR_ADDED,
-					Processor: &rpc.ProcessorIdentifier{Id: id}, ParentTrack: &rpc.TrackIdentifier{Id: t.id}}}
-			}
+		t := g.f.trackByID(in.Track.GetId())
+		if t == nil {
+			return nil
 		}
-		return nil
+		at := t.insertIndex(in.Position)
+		if at < 0 {
+			return nil
+		}
+		id := g.f.nextID
+		g.f.nextID++
+		t.procs = slices.Insert(t.procs, at, &procRec{id: id, name: in.Name, uid: in.Uid})
+		return []proto.Message{procUpdate(rpc.ProcessorUpdate_PROCESSOR_ADDED, id, t.id)}
+	}), nil
+}
+
+func (g *graph) DeleteProcessorFromTrack(_ context.Context, in *rpc.DeleteProcessorRequest) (*rpc.CommandResponse, error) {
+	g.f.mu.Lock()
+	t := g.f.trackByID(in.Track.GetId())
+	missing := t == nil || t.indexOf(in.Processor.GetId()) < 0
+	g.f.mu.Unlock()
+	if missing {
+		return notFound(), nil
+	}
+	return g.async(func() []proto.Message {
+		g.f.mu.Lock()
+		defer g.f.mu.Unlock()
+		i := t.indexOf(in.Processor.Id)
+		if i < 0 {
+			return nil
+		}
+		t.procs = slices.Delete(t.procs, i, i+1)
+		return []proto.Message{procUpdate(rpc.ProcessorUpdate_PROCESSOR_DELETED, in.Processor.Id, t.id)}
+	}), nil
+}
+
+// MoveProcessorOnTrack mirrors Sushi: the processor keeps its id, and the notifications are
+// DELETED then ADDED. Cross-track moves are supported.
+func (g *graph) MoveProcessorOnTrack(_ context.Context, in *rpc.MoveProcessorRequest) (*rpc.CommandResponse, error) {
+	g.f.mu.Lock()
+	src, dst := g.f.trackByID(in.SourceTrack.GetId()), g.f.trackByID(in.DestTrack.GetId())
+	missing := src == nil || dst == nil || src.indexOf(in.Processor.GetId()) < 0
+	g.f.mu.Unlock()
+	if missing {
+		return notFound(), nil
+	}
+	return g.async(func() []proto.Message {
+		g.f.mu.Lock()
+		defer g.f.mu.Unlock()
+		i := src.indexOf(in.Processor.Id)
+		if i < 0 {
+			return nil
+		}
+		p := src.procs[i]
+		src.procs = slices.Delete(src.procs, i, i+1)
+		at := dst.insertIndex(in.Position)
+		if at < 0 { // Sushi puts the processor back where it was
+			src.procs = slices.Insert(src.procs, i, p)
+			return nil
+		}
+		dst.procs = slices.Insert(dst.procs, at, p)
+		return []proto.Message{
+			procUpdate(rpc.ProcessorUpdate_PROCESSOR_DELETED, p.id, src.id),
+			procUpdate(rpc.ProcessorUpdate_PROCESSOR_ADDED, p.id, dst.id),
+		}
+	}), nil
+}
+
+func (g *graph) DeleteTrack(_ context.Context, in *rpc.TrackIdentifier) (*rpc.CommandResponse, error) {
+	g.f.mu.Lock()
+	missing := g.f.trackByID(in.Id) == nil
+	g.f.mu.Unlock()
+	if missing {
+		return notFound(), nil
+	}
+	return g.async(func() []proto.Message {
+		g.f.mu.Lock()
+		defer g.f.mu.Unlock()
+		g.f.tracks = slices.DeleteFunc(g.f.tracks, func(t *trackRec) bool { return t.id == in.Id })
+		return []proto.Message{&rpc.TrackUpdate{Action: rpc.TrackUpdate_TRACK_DELETED, Track: &rpc.TrackIdentifier{Id: in.Id}}}
 	}), nil
 }
 

@@ -14,6 +14,8 @@ import (
 	"github.com/go-zeromq/zmq4"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 // ZMQServer speaks Sushi's ZeroMQ protocol, decoding requests the way zmq_server.cpp does, and
@@ -220,10 +222,27 @@ func (z *ZMQServer) serve(reg *registry) {
 			}
 			if pm, ok := resp.(proto.Message); ok && herr == nil {
 				out, _ = proto.Marshal(pm)
+			} else {
+				out = unsupported(md.Output())
 			}
 		}
 		z.reply(env, out)
 	}
+}
+
+// unsupported builds a reply carrying UNSUPPORTED_OPERATION (when the response type has a status
+// field), so a method the fake lacks fails loudly rather than looking like a success.
+func unsupported(d protoreflect.MessageDescriptor) []byte {
+	m := dynamicpb.NewMessage(d)
+	if f := d.Fields().ByName("status"); f != nil && f.Message() != nil {
+		st := dynamicpb.NewMessage(f.Message())
+		if sf := f.Message().Fields().ByName("status"); sf != nil {
+			st.Set(sf, protoreflect.ValueOfEnum(protoreflect.EnumNumber(rpc.CommandStatus_UNSUPPORTED_OPERATION)))
+			m.Set(f, protoreflect.ValueOfMessage(st))
+		}
+	}
+	b, _ := proto.Marshal(m)
+	return b
 }
 
 func (z *ZMQServer) reply(env [][]byte, body []byte) {
