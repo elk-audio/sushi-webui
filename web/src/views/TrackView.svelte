@@ -10,6 +10,7 @@
   import PluginCard from './PluginCard.svelte';
   import SendCard from './SendCard.svelte';
   import Inspector from './Inspector.svelte';
+  import RouteSelect from '../lib/widgets/RouteSelect.svelte';
 
   let { track }: { track: Track } = $props();
   let s = $derived(store.state!);
@@ -212,7 +213,7 @@
   <div class="tbody">
     <div class="chainwrap" onpointerdown={swDown} onpointerup={swUp} role="presentation">
       <div class="chain">
-        {#if ui.showMix}<div class="io"><b>{inL}</b><span>{inV}</span><span class="arrow">→</span></div>{/if}
+        {#if ui.showMix}<div class="io"><b>{inL}</b>{#if track.kind === 'audio'}<RouteSelect {track} dir="in" />{:else}<span>{inV}</span>{/if}<span class="arrow">→</span></div>{/if}
         {#each sections as { sec, items } (sec)}
           <div class="section">
             <h3>{ROLE_LABEL[sec]}</h3>
@@ -238,7 +239,7 @@
             </div>
           </div>
         {/if}
-        {#if ui.showMix}<div class="io"><span class="arrow">→</span><b>OUT</b><span>{track.output}</span></div>{/if}
+        {#if ui.showMix}<div class="io"><span class="arrow">→</span><b>OUT</b><RouteSelect {track} dir="out" /></div>{/if}
       </div>
     </div>
     {#if !phone && ui.showMix}<Inspector {track} />{/if}

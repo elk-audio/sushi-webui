@@ -9,6 +9,7 @@
   import { PALETTE } from '../lib/util';
   import Knob from '../lib/widgets/Knob.svelte';
   import VFader from '../lib/widgets/VFader.svelte';
+  import RouteSelect from '../lib/widgets/RouteSelect.svelte';
 
   let { track }: { track: Track } = $props();
   let s = $derived(store.state!);
@@ -42,8 +43,8 @@
   {/if}
   <h4>Routing</h4>
   <div class="route">
-    <span>Input</span><b>{routeIn(s, track)[1]}</b>
-    <span>Output</span><b>{track.output}</b>
+    <span>Input</span>{#if track.kind === 'audio'}<RouteSelect {track} dir="in" />{:else}<b>{routeIn(s, track)[1]}</b>{/if}
+    <span>Output</span><RouteSelect {track} dir="out" />
     <span>Channels</span><b>{track.channels === 1 ? 'Mono' : track.channels === 2 ? 'Stereo' : track.channels}</b>
     <span>Hidden</span><b>{hidden}</b>
   </div>

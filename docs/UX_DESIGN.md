@@ -204,7 +204,7 @@ Track mode is for the plugin chain and sends only. It shows the chain at full wi
 - A right-hand panel (desktop/tablet) with:
   - the fader, meter, pan and M/S;
   - colour;
-  - routing (input, output, channels);
+  - routing: the input (audio tracks) and output are dropdowns of engine channel pairs (a dual-mono track picks single inputs), also available in the input/output blocks of Mix & routing on every device. New tracks default to the buses given by `--default-input`/`--default-output`;
   - a "Hidden" line listing the hidden processors (level meter, n sends, return), for transparency;
   - delete track or bus.
 - On phone, the same controls appear in a dock at the bottom: pan, fader with meter, dB, M/S.

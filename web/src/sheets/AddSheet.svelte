@@ -19,8 +19,8 @@
   let name = $state(defName(initialKind));
   let nameEdited = $state(false);
   let channels = $state<1 | 2>(1);
-  let input = $state(0);
-  let output = $state(0);
+  let input = $state(store.state!.sushi.defaultInput);
+  let output = $state(store.state!.sushi.defaultOutput);
   let midiPort = $state(0);
   let midiChannel = $state(0);
   const cat = store.state!.catalog;
@@ -50,7 +50,8 @@
     if (!nameEdited) name = defName(k);
     if (k === 'midi' && !instrument && instruments.length) instrument = instruments[0].id;
   }
-  $effect(() => { if (input >= Math.max(1, s.sushi.inputs)) input = 0; });
+  $effect(() => { if (input + channels > Math.max(1, s.sushi.inputs)) input = 0; });
+  $effect(() => { if (output + 2 > Math.max(2, s.sushi.outputs)) output = 0; });
 
   async function create() {
     busy = true;

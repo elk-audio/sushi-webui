@@ -178,6 +178,8 @@ canvas.meter{display:block}
 .io{flex:none;width:96px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:12px;color:var(--muted);font-size:12px}
 .io b{color:var(--text);font-size:13px;letter-spacing:.08em}
 .io .arrow{color:var(--faint);font-size:18px}
+.route-sel{width:100%;min-height:32px;padding:4px 6px;font-size:12px}
+.route .route-sel{width:auto}
 .section{display:flex;flex-direction:column;gap:8px;padding:0 10px 10px;border-left:1px dashed var(--line)}
 .section h3{margin:0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;padding-top:2px}
 .section .cards{display:flex;gap:10px;align-items:flex-start}

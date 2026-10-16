@@ -21,12 +21,13 @@ export interface Track {
   gain: Param | null; pan: Param | null;
   mute: boolean; solo: boolean;
   input: string; output: string;
+  inChan: number; outChan: number; inMono: boolean;  // first engine channel (0-based, -1 = none); inMono: dual-mono input
   chain: Processor[]; sends: Send[];
   meter: number;
 }
 export interface CatalogEntry { id: string; name: string; vendor: string; category: string; uid: string; path: string; type: 'internal' | 'vst2' | 'vst3' | 'lv2'; role: Role }
 export interface State {
-  sushi: { connected: boolean; version: string; inputs: number; outputs: number; midiInputs: number; samplerate: number };
+  sushi: { connected: boolean; version: string; inputs: number; outputs: number; midiInputs: number; samplerate: number; defaultInput: number; defaultOutput: number };
   project: { name: string; dirty: boolean; list: string[] };
   ui: { advanced: boolean };
   transport: { tempo: number; playing: boolean };
