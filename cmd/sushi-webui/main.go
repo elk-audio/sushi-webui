@@ -35,7 +35,8 @@ func main() {
 	dev := flag.Bool("dev", false, "development mode: accept WebSocket connections from any origin (Vite proxy)")
 	logLevel := flag.String("log-level", "info", "debug | info | warn | error")
 	var pluginPaths multiFlag
-	flag.Var(&pluginPaths, "plugin-path", "extra folder to scan for VST3 and LV2 plugins (repeatable)")
+	flag.Var(&pluginPaths, "plugin-path", "extra folder to look for the plugins in the list (repeatable)")
+	pluginList := flag.String("plugin-list", "", "categorized plugin list (JSON, sushi-gui installed_plugins.json format); default: built-in list")
 	flag.Parse()
 
 	var lvl slog.Level
@@ -47,18 +48,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	vst2 := []string{"/usr/lib/vst", "/usr/local/lib/vst", filepath.Join(home, ".vst")}
 	vst3 := []string{"/usr/lib/vst3", "/usr/local/lib/vst3", filepath.Join(home, ".vst3")}
 	lv2 := []string{"/usr/lib/lv2", "/usr/local/lib/lv2", filepath.Join(home, ".lv2")}
 	if runtime.GOOS == "darwin" {
+		vst2 = append(vst2, "/Library/Audio/Plug-Ins/VST", filepath.Join(home, "Library/Audio/Plug-Ins/VST"))
 		vst3 = append(vst3, "/Library/Audio/Plug-Ins/VST3", filepath.Join(home, "Library/Audio/Plug-Ins/VST3"))
 		lv2 = append(lv2, "/Library/Audio/Plug-Ins/LV2", filepath.Join(home, "Library/Audio/Plug-Ins/LV2"))
 	}
 	if p := os.Getenv("LV2_PATH"); p != "" {
 		lv2 = append(lv2, filepath.SplitList(p)...)
 	}
+	vst2 = append(vst2, pluginPaths...)
 	vst3 = append(vst3, pluginPaths...)
 	lv2 = append(lv2, pluginPaths...)
-	cat := catalog.Build(vst3, lv2, filepath.Join(*dataDir, "plugins.json"))
+	cat := catalog.Build(*pluginList, vst2, vst3, lv2)
 
 	eng := core.New(*sushiAddr, *dataDir, cat)
 	h := hub.New(eng, *dev)

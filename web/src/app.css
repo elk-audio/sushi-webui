@@ -286,6 +286,8 @@ canvas.meter{display:block}
 .plist{display:flex;flex-direction:column;gap:2px}
 .plist h6{margin:10px 0 4px;font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;font-weight:600}
 .pitem{display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;text-align:left;width:100%}
+.crumbs{display:flex;align-items:center;gap:10px;padding:2px 0 8px;font-size:13px;color:var(--muted)}
+.crumbs span button{color:var(--accent)}
 .pitem:hover:not(:disabled){background:var(--s2)}
 .pitem:disabled{opacity:.5}
 .pitem .t{flex:1;min-width:0}

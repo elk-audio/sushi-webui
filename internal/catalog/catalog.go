@@ -1,16 +1,18 @@
 // Package catalog builds the list of plugins the user can add. Sushi has no plugin enumeration RPC,
-// so this combines a built-in list of Sushi's internal plugins, a scan of VST3 and LV2 folders, and
-// an optional user plugins.json override (see ARCHITECTURE.md §4.10).
+// so the list comes from a predefined, categorized JSON file (vendor → category → plugin, the format
+// of sushi-gui's installed_plugins.json). At startup every external plugin is checked against the
+// plugin folders and dropped when it isn't installed. Internal plugins are always offered.
 package catalog
 
 import (
 	"bufio"
+	"bytes"
+	_ "embed"
 	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -23,57 +25,18 @@ const (
 )
 
 type Entry struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Vendor string `json:"vendor"`
-	UID    string `json:"uid"`
-	Path   string `json:"path"`
-	Type   string `json:"type"` // internal | vst2 | vst3 | lv2
-	Role   Role   `json:"role"`
-	Hidden bool   `json:"-"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Vendor   string `json:"vendor"`   // top level of the hierarchy ("Internal", "Brickworks", …)
+	Category string `json:"category"` // second level ("Reverb", …)
+	UID      string `json:"uid"`
+	Path     string `json:"path"`
+	Type     string `json:"type"` // internal | vst2 | vst3 | lv2
+	Role     Role   `json:"role"`
 }
 
-type internalDef struct {
-	uid, name string
-	role      Role
-}
-
-// Internal plugins of Sushi 1.x (src/plugins). Utility plugins (peakmeter, send/return, cv, wav io)
-// are deliberately not offered.
-var internal = []internalDef{
-	{"sushi.testing.arpeggiator", "Arpeggiator", MidiFx},
-	{"sushi.testing.transposer", "Transposer", MidiFx},
-	{"sushi.testing.step_sequencer", "Step Sequencer", MidiFx},
-	{"sushi.brickworks.simple_synth", "Simple Synth", Instrument},
-	{"sushi.testing.sampleplayer", "Sample Player", Instrument},
-	{"sushi.testing.gain", "Gain", AudioFx},
-	{"sushi.testing.equalizer", "Equalizer", AudioFx},
-	{"sushi.testing.freeverb", "Freeverb", AudioFx},
-	{"sushi.testing.sample_delay", "Sample Delay", AudioFx},
-	{"sushi.testing.mono_summing", "Mono Summing", AudioFx},
-	{"sushi.testing.stereo_mixer", "Stereo Mixer", AudioFx},
-	{"sushi.brickworks.bitcrusher", "Bitcrusher", AudioFx},
-	{"sushi.brickworks.cab_sim", "Cab Sim", AudioFx},
-	{"sushi.brickworks.chorus", "Chorus", AudioFx},
-	{"sushi.brickworks.clip", "Clip", AudioFx},
-	{"sushi.brickworks.comb_delay", "Comb Delay", AudioFx},
-	{"sushi.brickworks.compressor", "Compressor", AudioFx},
-	{"sushi.brickworks.dist", "Distortion", AudioFx},
-	{"sushi.brickworks.drive", "Drive", AudioFx},
-	{"sushi.brickworks.eq3band", "EQ 3-band", AudioFx},
-	{"sushi.brickworks.flanger", "Flanger", AudioFx},
-	{"sushi.brickworks.fuzz", "Fuzz", AudioFx},
-	{"sushi.brickworks.highpass", "Highpass", AudioFx},
-	{"sushi.brickworks.multi_filter", "Multi Filter", AudioFx},
-	{"sushi.brickworks.noise_gate", "Noise Gate", AudioFx},
-	{"sushi.brickworks.notch", "Notch", AudioFx},
-	{"sushi.brickworks.phaser", "Phaser", AudioFx},
-	{"sushi.brickworks.ring_mod", "Ring Modulator", AudioFx},
-	{"sushi.brickworks.saturation", "Saturation", AudioFx},
-	{"sushi.brickworks.tremolo", "Tremolo", AudioFx},
-	{"sushi.brickworks.vibrato", "Vibrato", AudioFx},
-	{"sushi.brickworks.wah", "Wah", AudioFx},
-}
+//go:embed plugins.json
+var defaultList []byte
 
 // Catalog is immutable after Build.
 type Catalog struct {
@@ -87,216 +50,208 @@ func (c *Catalog) Get(id string) (*Entry, bool) { e, ok := c.byID[id]; return e,
 // ByUID finds an entry from a processor's uid (e.g. from a saved session).
 func (c *Catalog) ByUID(uid string) (*Entry, bool) { e, ok := c.byUID[uid]; return e, ok }
 
-// Visible returns the entries offered in the plugin browser.
-func (c *Catalog) Visible() []Entry {
-	out := make([]Entry, 0, len(c.Entries))
-	for _, e := range c.Entries {
-		if !e.Hidden {
-			out = append(out, e)
-		}
-	}
-	return out
+// Visible returns the entries offered in the plugin browser, in list order.
+func (c *Catalog) Visible() []Entry { return c.Entries }
+
+type listItem struct {
+	Name string `json:"name"`
+	UID  string `json:"uid"`
+	Path string `json:"path"`
+	Type string `json:"type"` // omitted for internal plugins; lv2 | vst2x | vst3x
+	Role Role   `json:"role"` // optional; defaults from the category
 }
 
-// Build scans the given folders. vst3Dirs and lv2Dirs may include non-existent paths.
-func Build(vst3Dirs, lv2Dirs []string, overridePath string) *Catalog {
+// Build reads the plugin list (listPath, or the embedded default when empty) and keeps the plugins
+// that are present. vst2Dirs, vst3Dirs and lv2Dirs may include non-existent paths.
+func Build(listPath string, vst2Dirs, vst3Dirs, lv2Dirs []string) *Catalog {
+	raw := defaultList
+	if listPath != "" {
+		b, err := os.ReadFile(listPath)
+		if err != nil {
+			slog.Warn("can't read plugin list, using the built-in one", "path", listPath, "err", err)
+		} else {
+			raw = b
+		}
+	}
 	c := &Catalog{byID: map[string]*Entry{}, byUID: map[string]*Entry{}}
-	for _, d := range internal {
-		c.Entries = append(c.Entries, Entry{ID: "int:" + d.uid, Name: d.name, Vendor: "Sushi", UID: d.uid, Type: "internal", Role: d.role})
-	}
-	var ext []Entry
-	for _, dir := range vst3Dirs {
-		ext = append(ext, scanVST3(dir)...)
-	}
-	for _, dir := range lv2Dirs {
-		ext = append(ext, scanLV2(dir)...)
-	}
-	sort.Slice(ext, func(i, j int) bool { return strings.ToLower(ext[i].Name) < strings.ToLower(ext[j].Name) })
-	c.Entries = append(c.Entries, ext...)
-	if overridePath != "" {
-		c.applyOverrides(overridePath)
-	}
+	lv2 := lv2URIs(lv2Dirs)
+	var missing int
+	walk(raw, func(vendor, category, key string, it listItem) {
+		e := Entry{Name: it.Name, Vendor: vendor, Category: category, UID: it.UID, Path: it.Path, Role: it.Role}
+		if e.Name == "" {
+			e.Name = key
+		}
+		if e.Role == "" {
+			e.Role = roleFor(category)
+		}
+		switch it.Type {
+		case "", "internal":
+			e.Type = "internal"
+			e.ID = "int:" + it.UID
+		case "lv2":
+			e.Type, e.UID = "lv2", it.Path
+			e.Path = ""
+			e.ID = "lv2:" + it.Path
+			if !lv2[it.Path] {
+				missing++
+				return
+			}
+		case "vst2x", "vst2":
+			e.Type = "vst2"
+			p := find(vst2Dirs, it.Path)
+			if p == "" {
+				missing++
+				return
+			}
+			e.Path, e.UID = p, ""
+			e.ID = "vst2:" + it.Path
+		case "vst3x", "vst3":
+			e.Type = "vst3"
+			p := find(vst3Dirs, it.Path)
+			if p == "" {
+				missing++
+				return
+			}
+			e.Path = p
+			if e.UID == "" {
+				e.UID = e.Name
+			}
+			e.ID = "vst3:" + it.Path + ":" + e.UID
+		default:
+			slog.Warn("unknown plugin type in list", "plugin", key, "type", it.Type)
+			return
+		}
+		c.Entries = append(c.Entries, e)
+	})
 	c.index()
-	slog.Info("plugin catalog built", "entries", len(c.Entries), "external", len(ext))
+	slog.Info("plugin catalog built", "available", len(c.Entries), "not installed", missing)
 	return c
 }
 
+func roleFor(category string) Role {
+	switch category {
+	case "MIDI & Control":
+		return MidiFx
+	case "Generator":
+		return Instrument
+	}
+	return AudioFx
+}
+
 func (c *Catalog) index() {
-	c.byID = map[string]*Entry{}
-	c.byUID = map[string]*Entry{}
 	for i := range c.Entries {
 		e := &c.Entries[i]
 		c.byID[e.ID] = e
-		if _, dup := c.byUID[e.UID]; !dup {
+		if _, dup := c.byUID[e.UID]; !dup && e.UID != "" {
 			c.byUID[e.UID] = e
 		}
 	}
 }
 
-// ---------------------------------------------------------------- VST3
-
-var trailingComma = regexp.MustCompile(`,(\s*[}\]])`)
-
-type moduleInfo struct {
-	Name    string `json:"Name"`
-	Factory struct {
-		Vendor string `json:"Vendor"`
-	} `json:"Factory Info"`
-	Classes []struct {
-		Name          string   `json:"Name"`
-		Category      string   `json:"Category"`
-		Vendor        string   `json:"Vendor"`
-		SubCategories []string `json:"Sub Categories"`
-	} `json:"Classes"`
+// find returns the absolute path of name in the first folder that has it.
+func find(dirs []string, name string) string {
+	if name == "" {
+		return ""
+	}
+	if filepath.IsAbs(name) {
+		if _, err := os.Stat(name); err == nil {
+			return name
+		}
+		return ""
+	}
+	for _, d := range dirs {
+		p := filepath.Join(d, name)
+		if _, err := os.Stat(p); err == nil {
+			abs, _ := filepath.Abs(p)
+			return abs
+		}
+	}
+	return ""
 }
 
-func scanVST3(dir string) []Entry {
-	bundles, _ := filepath.Glob(filepath.Join(dir, "*.vst3"))
-	var out []Entry
-	for _, b := range bundles {
-		abs, _ := filepath.Abs(b)
-		info := filepath.Join(b, "Contents", "Resources", "moduleinfo.json")
-		raw, err := os.ReadFile(info)
-		if err != nil {
-			// No moduleinfo: offer the bundle under its file name; Sushi accepts the class name as uid.
-			name := strings.TrimSuffix(filepath.Base(b), ".vst3")
-			out = append(out, Entry{ID: "vst3:" + name, Name: name, UID: name, Path: abs, Type: "vst3", Role: AudioFx})
-			continue
-		}
-		var mi moduleInfo
-		if err := json.Unmarshal(trailingComma.ReplaceAll(raw, []byte("$1")), &mi); err != nil {
-			slog.Warn("unreadable moduleinfo.json", "path", info, "err", err)
-			continue
-		}
-		for _, cl := range mi.Classes {
-			if cl.Category != "Audio Module Class" {
-				continue
-			}
-			role := AudioFx
-			for _, s := range cl.SubCategories {
-				if strings.Contains(strings.ToLower(s), "instrument") || strings.EqualFold(s, "Synth") {
-					role = Instrument
+// ---------------------------------------------------------------- list file (order preserving)
+
+// walk visits {"plugins": {vendor: {category: {key: item}}}} in file order.
+func walk(raw []byte, fn func(vendor, category, key string, it listItem)) {
+	var top struct {
+		Plugins json.RawMessage `json:"plugins"`
+	}
+	if err := json.Unmarshal(raw, &top); err != nil {
+		slog.Warn("invalid plugin list", "err", err)
+		return
+	}
+	for _, v := range entries(top.Plugins) {
+		for _, c := range entries(v.val) {
+			for _, p := range entries(c.val) {
+				var it listItem
+				if err := json.Unmarshal(p.val, &it); err != nil {
+					slog.Warn("invalid plugin list entry", "plugin", p.key, "err", err)
+					continue
 				}
+				fn(v.key, c.key, p.key, it)
 			}
-			vendor := cl.Vendor
-			if vendor == "" {
-				vendor = mi.Factory.Vendor
-			}
-			out = append(out, Entry{ID: "vst3:" + cl.Name, Name: cl.Name, Vendor: vendor, UID: cl.Name, Path: abs, Type: "vst3", Role: role})
 		}
+	}
+}
+
+type kv struct {
+	key string
+	val json.RawMessage
+}
+
+// entries returns the members of a JSON object in document order.
+func entries(raw json.RawMessage) []kv {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return nil
+	}
+	var out []kv
+	for dec.More() {
+		k, err := dec.Token()
+		if err != nil {
+			break
+		}
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			break
+		}
+		out = append(out, kv{k.(string), v})
 	}
 	return out
 }
 
 // ---------------------------------------------------------------- LV2 (minimal Turtle reading)
 
-var (
-	reSubject = regexp.MustCompile(`^<([^>]+)>`)
-	reName    = regexp.MustCompile(`doap:name\s+"([^"]+)"`)
-)
+var reSubject = regexp.MustCompile(`^<([^>]+)>`)
 
-func scanLV2(dir string) []Entry {
-	bundles, _ := filepath.Glob(filepath.Join(dir, "*.lv2"))
-	var out []Entry
-	for _, b := range bundles {
-		files, _ := filepath.Glob(filepath.Join(b, "*.ttl"))
-		var uri, name string
-		role := AudioFx
-		isPlugin := false
-		for _, f := range files {
-			fh, err := os.Open(f)
-			if err != nil {
-				continue
-			}
-			sc := bufio.NewScanner(fh)
-			sc.Buffer(make([]byte, 1<<20), 1<<20)
-			var subject string
-			for sc.Scan() {
-				line := strings.TrimSpace(sc.Text())
-				if m := reSubject.FindStringSubmatch(line); m != nil {
-					subject = m[1]
+// lv2URIs returns the URIs of the LV2 plugins found in the given folders.
+func lv2URIs(dirs []string) map[string]bool {
+	out := map[string]bool{}
+	for _, dir := range dirs {
+		bundles, _ := filepath.Glob(filepath.Join(dir, "*.lv2"))
+		for _, b := range bundles {
+			files, _ := filepath.Glob(filepath.Join(b, "*.ttl"))
+			for _, f := range files {
+				fh, err := os.Open(f)
+				if err != nil {
+					continue
 				}
-				if strings.Contains(line, "lv2:Plugin") || strings.Contains(line, "lv2:InstrumentPlugin") || strings.Contains(line, "Plugin ,") {
-					if subject != "" && strings.Contains(subject, ":") && (uri == "" || uri == subject) {
-						uri = subject
-						isPlugin = true
+				sc := bufio.NewScanner(fh)
+				sc.Buffer(make([]byte, 1<<20), 1<<20)
+				var subject string
+				for sc.Scan() {
+					line := strings.TrimSpace(sc.Text())
+					if m := reSubject.FindStringSubmatch(line); m != nil {
+						subject = m[1]
+					}
+					if subject != "" && strings.Contains(subject, ":") &&
+						(strings.Contains(line, "lv2:Plugin") || strings.Contains(line, "Plugin ,") || strings.Contains(line, "lv2:InstrumentPlugin")) {
+						out[subject] = true
 					}
 				}
-				if strings.Contains(line, "lv2:InstrumentPlugin") {
-					role = Instrument
-				} else if strings.Contains(line, "lv2:MIDIPlugin") && role != Instrument {
-					role = MidiFx
-				}
-				if m := reName.FindStringSubmatch(line); m != nil && name == "" && (subject == uri || subject == "") {
-					name = m[1]
-				}
+				fh.Close()
 			}
-			fh.Close()
 		}
-		if !isPlugin || uri == "" {
-			continue
-		}
-		if name == "" {
-			name = strings.TrimSuffix(filepath.Base(b), ".lv2")
-		}
-		out = append(out, Entry{ID: "lv2:" + uri, Name: name, UID: uri, Type: "lv2", Role: role})
 	}
 	return out
-}
-
-// ---------------------------------------------------------------- overrides
-
-type override struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Vendor string `json:"vendor"`
-	UID    string `json:"uid"`
-	Path   string `json:"path"`
-	Type   string `json:"type"`
-	Role   Role   `json:"role"`
-	Hidden bool   `json:"hidden"`
-}
-
-// plugins.json: {"plugins":[{"id":"vst3:mda JX10","role":"instrument"}, {"uid":"...","type":"vst2","path":"...","name":"..."}]}
-func (c *Catalog) applyOverrides(path string) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var f struct {
-		Plugins []override `json:"plugins"`
-	}
-	if err := json.Unmarshal(raw, &f); err != nil {
-		slog.Warn("ignoring invalid plugins.json", "path", path, "err", err)
-		return
-	}
-	c.index()
-	for _, o := range f.Plugins {
-		if e, ok := c.byID[o.ID]; ok && o.ID != "" {
-			if o.Name != "" {
-				e.Name = o.Name
-			}
-			if o.Role != "" {
-				e.Role = o.Role
-			}
-			e.Hidden = o.Hidden
-			continue
-		}
-		if o.UID == "" || o.Type == "" {
-			continue
-		}
-		id := o.ID
-		if id == "" {
-			id = o.Type + ":" + o.UID
-		}
-		role := o.Role
-		if role == "" {
-			role = AudioFx
-		}
-		name := o.Name
-		if name == "" {
-			name = o.UID
-		}
-		c.Entries = append(c.Entries, Entry{ID: id, Name: name, Vendor: o.Vendor, UID: o.UID, Path: o.Path, Type: o.Type, Role: role, Hidden: o.Hidden})
-	}
 }

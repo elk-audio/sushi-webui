@@ -24,7 +24,7 @@ export interface Track {
   chain: Processor[]; sends: Send[];
   meter: number;
 }
-export interface CatalogEntry { id: string; name: string; vendor: string; uid: string; path: string; type: 'internal' | 'vst2' | 'vst3' | 'lv2'; role: Role }
+export interface CatalogEntry { id: string; name: string; vendor: string; category: string; uid: string; path: string; type: 'internal' | 'vst2' | 'vst3' | 'lv2'; role: Role }
 export interface State {
   sushi: { connected: boolean; version: string; inputs: number; outputs: number; midiInputs: number; samplerate: number };
   project: { name: string; dirty: boolean; list: string[] };
