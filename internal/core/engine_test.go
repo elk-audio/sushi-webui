@@ -3,6 +3,7 @@ package core_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
@@ -201,5 +202,117 @@ func TestEngineReconnectsOverZMQ(t *testing.T) {
 	fakesushi.StartZMQAt(t, r.f, control, notify)
 	eventually(t, "reconnected", func() bool {
 		return state(r.e).State.Sushi.Connected && r.f.Calls("GetSushiVersion") >= 2
+	})
+}
+
+// pluginsByRole picks n distinct catalog entries with that role.
+func pluginsByRole(t *testing.T, role catalog.Role, n int) []string {
+	t.Helper()
+	var ids []string
+	for _, e := range catalog.Build("", nil, nil, nil).Visible() {
+		if e.Role == role && len(ids) < n {
+			ids = append(ids, e.ID)
+		}
+	}
+	if len(ids) < n {
+		t.Fatalf("catalog has only %d %s plugins", len(ids), role)
+	}
+	return ids
+}
+
+func (r *rig) cmd(t *testing.T, op string, args map[string]any) map[string]any {
+	t.Helper()
+	b, _ := json.Marshal(args)
+	res, err := r.e.Command(op, b)
+	if err != nil {
+		t.Fatalf("%s: %v", op, err)
+	}
+	return res
+}
+
+func (r *rig) cmdErr(t *testing.T, op string, args map[string]any) error {
+	t.Helper()
+	b, _ := json.Marshal(args)
+	_, err := r.e.Command(op, b)
+	if err == nil {
+		t.Fatalf("%s should have failed", op)
+	}
+	return err
+}
+
+// chain is a track's processors in Sushi's order, hidden ones included (the meter is last).
+func (r *rig) chain(track string) string { return strings.Join(r.f.ProcessorNames(track), ",") }
+
+func (r *rig) addPlugin(t *testing.T, track int32, catalogID string) int32 {
+	t.Helper()
+	return int32(r.cmd(t, "addPlugin", map[string]any{"track": track, "catalogId": catalogID})["id"].(int32))
+}
+
+func TestEngineRemovesAndReordersPlugins(t *testing.T) {
+	forBoth(t, func(t *testing.T, r *rig) {
+		eventually(t, "connected", func() bool { _, _, ok := state(r.e).track("Audio 1"); return ok && state(r.e).hasMaster() })
+		tid, _, _ := state(r.e).track("Audio 1")
+		fx := pluginsByRole(t, catalog.AudioFx, 3)
+		a, b, c := r.addPlugin(t, tid, fx[0]), r.addPlugin(t, tid, fx[1]), r.addPlugin(t, tid, fx[2])
+		names := r.f.ProcessorNames("Audio 1")
+		if len(names) != 4 || !strings.HasPrefix(names[3], "__meter__") {
+			t.Fatalf("chain = %v, want 3 plugins before the meter", names)
+		}
+		nameA, nameB, nameC := names[0], names[1], names[2]
+
+		// A hidden processor isn't a plugin: the browser can't delete or move it.
+		meter := r.f.ProcessorID(names[3])
+		r.cmdErr(t, "removePlugin", map[string]any{"proc": meter})
+		r.cmdErr(t, "movePlugin", map[string]any{"proc": meter, "index": 0})
+		r.cmdErr(t, "removePlugin", map[string]any{"proc": 9999})
+
+		r.cmd(t, "movePlugin", map[string]any{"proc": c, "index": 0})
+		if got, want := r.chain("Audio 1"), strings.Join([]string{nameC, nameA, nameB, names[3]}, ","); got != want {
+			t.Fatalf("after moving to the front: %s, want %s", got, want)
+		}
+		// Past the end means last visible slot: still before the meter.
+		r.cmd(t, "movePlugin", map[string]any{"proc": c, "index": 99})
+		if got, want := r.chain("Audio 1"), strings.Join([]string{nameA, nameB, nameC, names[3]}, ","); got != want {
+			t.Fatalf("after moving to the end: %s, want %s", got, want)
+		}
+
+		r.cmd(t, "removePlugin", map[string]any{"proc": b})
+		if got, want := r.chain("Audio 1"), strings.Join([]string{nameA, nameC, names[3]}, ","); got != want {
+			t.Fatalf("after removing: %s, want %s", got, want)
+		}
+		eventually(t, "removed plugin gone from the model", func() bool {
+			return !strings.Contains(string(r.e.StateMessage()), `"id":`+fmt.Sprint(b)+`,"name":"`+nameB)
+		})
+		_ = a
+	})
+}
+
+func TestEngineKeepsMidiSectionsOrdered(t *testing.T) {
+	forBoth(t, func(t *testing.T, r *rig) {
+		eventually(t, "connected", func() bool { return state(r.e).hasMaster() })
+		r.cmd(t, "addTrack", map[string]any{"kind": "midi", "name": "Keys", "channels": 2})
+		var tid int32
+		eventually(t, "Keys", func() bool { id, _, ok := state(r.e).track("Keys"); tid = id; return ok })
+		mfx := r.addPlugin(t, tid, pluginsByRole(t, catalog.MidiFx, 1)[0])
+		inst := r.addPlugin(t, tid, pluginsByRole(t, catalog.Instrument, 1)[0])
+		fx := r.addPlugin(t, tid, pluginsByRole(t, catalog.AudioFx, 1)[0])
+		before := r.chain("Keys")
+
+		// The generator can't go after the effect, nor ahead of the MIDI effect; the effect can't jump ahead of it.
+		r.cmdErr(t, "movePlugin", map[string]any{"proc": inst, "index": 2})
+		r.cmdErr(t, "movePlugin", map[string]any{"proc": inst, "index": 0})
+		r.cmdErr(t, "movePlugin", map[string]any{"proc": fx, "index": 0})
+		r.cmdErr(t, "movePlugin", map[string]any{"proc": mfx, "index": 2})
+		if got := r.chain("Keys"); got != before {
+			t.Fatalf("a rejected move changed the chain: %s, want %s", got, before)
+		}
+
+		// With the instrument gone, a new one can be added again (it goes between the MIDI and audio effects).
+		r.cmd(t, "removePlugin", map[string]any{"proc": inst})
+		r.addPlugin(t, tid, pluginsByRole(t, catalog.Instrument, 1)[0])
+		names := r.f.ProcessorNames("Keys")
+		if len(names) != 4 || names[0] != before[:strings.Index(before, ",")] {
+			t.Fatalf("chain = %v", names)
+		}
 	})
 }

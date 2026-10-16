@@ -196,8 +196,8 @@ All ops are serialized through a single op queue (prevents interleaved graph edi
 | **AddAudioTrack**(name, channels 1/2, inputs[], outputs[]) | `CreateTrack{name, channels}` → await `TRACK_ADDED` → `ConnectInputChannelToTrack` × n → `ConnectOutputChannelFromTrack` × n → `CreateProcessorOnTrack{uid: sushi.testing.peakmeter, name: __meter__<name>, add_to_back}` → set `update_rate` to max |
 | **AddMidiTrack**(name, midi port/channel, instrument uid, outputs[]) | `CreateTrack{channels: 2}` → `ConnectKbdInputToTrack{track, channel, port, raw_midi:false}` → outputs → peakmeter → optional `CreateProcessorOnTrack(instrument)` before meter |
 | **AddPlugin**(track, uid, type, path, section, index) | `CreateProcessorOnTrack{…, position{add_to_back:false, before_processor: <next visible proc or meter>}}` |
-| **MovePlugin**(proc, index) | `MoveProcessorOnTrack{processor, source_track, dest_track, position}` (validated against section rules) |
-| **RemovePlugin** | `DeleteProcessorFromTrack` |
+| **MovePlugin**(proc, index) | `MoveProcessorOnTrack{processor, source_track, dest_track, position}` (refused when it would break the section order; the backend checks it, not just the UI) |
+| **RemovePlugin** | `DeleteProcessorFromTrack`, then drop the name-keyed sidecar entries (`Procs`, `Macros`) so a reused name doesn't inherit them |
 | **RemoveTrack** | `DeleteProcessorFromTrack` for each (incl. meter) → `DeleteTrack` |
 | **SetParam**(key, norm) | `SetParameterValue` (coalesced, see §4.8) |
 | **SetBypass / SetProgram** | `SetProcessorBypassState` / `SetProcessorProgram` |

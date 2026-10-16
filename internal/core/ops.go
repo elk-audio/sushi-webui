@@ -416,6 +416,12 @@ func (e *Engine) addTrack(kind, name string, channels, input, output, midiPort, 
 func (e *Engine) removeTrack(id int32) error {
 	e.mu.Lock()
 	t := e.tracks[id]
+	var plugNames []string
+	if t != nil {
+		for _, p := range t.Chain {
+			plugNames = append(plugNames, p.Name)
+		}
+	}
 	var senders []sendKey
 	if t != nil && t.Kind == "bus" {
 		for _, o := range e.tracks {
@@ -432,6 +438,9 @@ func (e *Engine) removeTrack(id int32) error {
 	}
 	if t.Kind == "post" {
 		return userErr("the Master track can't be deleted")
+	}
+	if t.Kind == "pre" {
+		return userErr("the Input track can't be deleted")
 	}
 	for _, s := range senders {
 		if err := e.removeSend(s.track, s.bus); err != nil {
@@ -454,6 +463,9 @@ func (e *Engine) removeTrack(id int32) error {
 	}
 	e.mu.Lock()
 	delete(e.meta.Tracks, t.Name)
+	for _, n := range plugNames {
+		delete(e.meta.Procs, n)
+	}
 	for _, o := range e.meta.Tracks {
 		delete(o.Sends, t.Name)
 	}
@@ -546,22 +558,49 @@ func (e *Engine) addPlugin(track int32, catalogID string, section catalog.Role) 
 	return id, nil
 }
 
+// userProcLocked finds a visible plugin and its track. Hidden processors (meter, sends, return)
+// and unknown ids are not plugins, so the browser can't touch them. Caller holds e.mu.
+func (e *Engine) userProcLocked(id int32) (*Track, *Proc) {
+	t := e.tracks[e.trackOf[id]]
+	if t == nil {
+		return nil, nil
+	}
+	for _, p := range t.Chain {
+		if p.ID == id {
+			return t, p
+		}
+	}
+	return nil, nil
+}
+
 func (e *Engine) removePlugin(id int32) error {
 	e.mu.Lock()
-	tid := e.trackOf[id]
+	t, p := e.userProcLocked(id)
+	if p == nil {
+		e.mu.Unlock()
+		return userErr("that plugin no longer exists")
+	}
+	tid, tname, pname := t.ID, t.Name, p.Name
 	e.mu.Unlock()
 	c := e.client()
 	r, err := c.Graph.DeleteProcessorFromTrack(ctxT(), &rpc.DeleteProcessorRequest{Processor: &rpc.ProcessorIdentifier{Id: id}, Track: &rpc.TrackIdentifier{Id: tid}})
 	if err := c.Cmd("DeleteProcessorFromTrack", r, err); err != nil {
 		return userErr("Sushi couldn't remove the plugin: %v", err)
 	}
+	// Metadata is keyed by name and names get reused ("Name 2"), so don't leave stale entries behind.
+	e.mu.Lock()
+	delete(e.meta.Procs, pname)
+	if tm := e.meta.Tracks[tname]; tm != nil {
+		delete(tm.Macros, pname)
+	}
+	e.mu.Unlock()
 	return nil
 }
 
 func (e *Engine) movePlugin(id int32, index int) error {
 	e.mu.Lock()
-	t := e.tracks[e.trackOf[id]]
-	if t == nil {
+	t, moved := e.userProcLocked(id)
+	if moved == nil {
 		e.mu.Unlock()
 		return userErr("that plugin no longer exists")
 	}
@@ -571,8 +610,17 @@ func (e *Engine) movePlugin(id int32, index int) error {
 			rest = append(rest, p)
 		}
 	}
+	if index < 0 || index > len(rest) {
+		index = len(rest)
+	}
+	// Sections stay ordered (MIDI FX, instrument, audio FX): a generator never ends up after an effect.
+	sec := sectionIndex(moved.Role)
+	if index > 0 && sectionIndex(rest[index-1].Role) > sec || index < len(rest) && sectionIndex(rest[index].Role) < sec {
+		e.mu.Unlock()
+		return userErr("%s can only be reordered within its own section", moved.Name)
+	}
 	var before int32 = -1
-	if index >= 0 && index < len(rest) {
+	if index < len(rest) {
 		before = rest[index].ID
 	} else if len(t.hidden) > 0 {
 		before = t.hidden[0]

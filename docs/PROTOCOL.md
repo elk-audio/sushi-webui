@@ -85,8 +85,8 @@ interface CatalogEntry { id: string; name: string; vendor: string /* top level, 
 | `setColor` | `{track, color}` |
 | `setMute` / `setSolo` | `{track, on}` |
 | `addPlugin` | `{track, catalogId, section: Role}` |
-| `removePlugin` | `{proc}` |
-| `movePlugin` | `{proc, index}`: target index in the track's visible chain |
+| `removePlugin` | `{proc}`: only visible plugins; hidden processors (meter, sends, return) are refused. Also drops the plugin's sidecar metadata |
+| `movePlugin` | `{proc, index}`: target index in the track's visible chain (the chain without `proc`; past the end means last). Refused when it would leave the section order MIDI FX → instrument → audio FX, e.g. a generator after an effect |
 | `setBypass` | `{proc, on}` |
 | `setProgram` | `{proc, program}` |
 | `setMacros` | `{proc, params:int[]}` |
