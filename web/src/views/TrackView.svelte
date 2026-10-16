@@ -2,8 +2,8 @@
   import type { Role, Track } from '../lib/types';
   import { store } from '../lib/state.svelte';
   import { ui, go, navOrder, toggleMix, trackKey } from '../lib/ui.svelte';
-  import { act } from '../lib/net/socket';
-  import { ROLE_ADD, ROLE_LABEL, kindHtml, routeIn, sectionsFor } from '../lib/labels';
+  import { act, cmd } from '../lib/net/socket';
+  import { ROLE_ADD, ROLE_LABEL, isFixed, kindHtml, routeIn, sectionsFor } from '../lib/labels';
   import Meter from '../lib/widgets/Meter.svelte';
   import PluginCard from './PluginCard.svelte';
   import SendCard from './SendCard.svelte';
@@ -21,6 +21,23 @@
   let [inL, inV] = $derived(routeIn(s, track));
 
   // Phone: collapsed cards (first card of each section starts expanded).
+  // Click the name to rename the track (Sushi tracks can't be renamed; the backend keeps the label).
+  let renaming = $state(false);
+  let draft = $state('');
+  function startRename() {
+    if (isFixed(track)) return;
+    draft = track.name;
+    renaming = true;
+  }
+  async function commitRename() {
+    if (!renaming) return;
+    renaming = false;
+    const name = draft.trim();
+    if (!name || name === track.name) return;
+    try { await cmd('renameTrack', { track: track.id, name }); } catch { /* toasted */ }
+  }
+  function focusSelect(el: HTMLInputElement) { el.focus(); el.select(); }
+
   let collapsed = $state<Record<number, boolean>>({});
   const isCollapsed = (id: number, first: boolean) => collapsed[id] ?? !first;
 
@@ -106,7 +123,15 @@
 <div class="trackview">
   <div class="thead" style="--tc:{track.color}">
     <button class="nav" disabled={prev === undefined} aria-label="Previous track" title="Previous track ( [ )" onclick={() => stepTrack(-1)}>‹</button>
-    <i></i><span class="tn">{track.name}</span>
+    <i></i>
+    {#if renaming}
+      <input class="tn-edit" aria-label="Track name" maxlength="40" bind:value={draft} use:focusSelect onblur={commitRename}
+        onkeydown={e => { e.stopPropagation(); if (e.key === 'Enter') commitRename(); else if (e.key === 'Escape') renaming = false; }} />
+    {:else if isFixed(track)}
+      <span class="tn">{track.name}</span>
+    {:else}
+      <button class="tn" title="Rename track" onclick={startRename}>{track.name}</button>
+    {/if}
     <button class="nav" disabled={next === undefined} aria-label="Next track" title="Next track ( ] )" onclick={() => stepTrack(1)}>›</button>
     <span class="kind">{@html kindHtml(s, track)}</span>
     <div class="spacer"></div>

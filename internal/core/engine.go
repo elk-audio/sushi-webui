@@ -661,7 +661,7 @@ func (e *Engine) refreshLocked() {
 	e.mu.Unlock()
 
 	for _, ti := range all.Tracks {
-		t := &Track{ID: ti.Id, Name: ti.Name, Channels: int(ti.Channels), Chain: []*Proc{}, Sends: []*Send{}, Meter: -1}
+		t := &Track{ID: ti.Id, Name: ti.Name, Label: ti.Name, Channels: int(ti.Channels), Chain: []*Proc{}, Sends: []*Send{}, Meter: -1}
 		old := oldTracks[ti.Id]
 		switch ti.GetType().GetType() {
 		case rpc.TrackType_PRE:
@@ -669,6 +669,11 @@ func (e *Engine) refreshLocked() {
 		case rpc.TrackType_POST:
 			t.Kind = "post"
 		}
+		e.mu.Lock()
+		if tm := e.meta.Tracks[ti.Name]; tm != nil && tm.Label != "" {
+			t.Label = tm.Label
+		}
+		e.mu.Unlock()
 		// track parameters (gain, pan, mute)
 		if old != nil && old.Name == t.Name {
 			t.Gain, t.Pan, t.muteParam, t.sushiMute = old.Gain, old.Pan, old.muteParam, old.sushiMute
@@ -806,7 +811,7 @@ func (e *Engine) refreshLocked() {
 				}
 			}
 		}
-		s.track.Sends = append(s.track.Sends, &Send{Bus: b.ID, BusName: b.Name, DB: sm.DB, Post: sm.Post, proc: s.proc, gainParam: gid, written: written})
+		s.track.Sends = append(s.track.Sends, &Send{Bus: b.ID, BusName: b.Label, DB: sm.DB, Post: sm.Post, proc: s.proc, gainParam: gid, written: written})
 	}
 	// metadata: kinds, colors, solo, user mute, macros
 	order := func(ts []*Track) {

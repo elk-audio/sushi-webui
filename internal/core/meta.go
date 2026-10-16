@@ -23,6 +23,7 @@ type Meta struct {
 
 type TrackMeta struct {
 	Kind   string               `json:"kind,omitempty"`
+	Label  string               `json:"label,omitempty"` // user-chosen display name (Sushi can't rename tracks)
 	Color  string               `json:"color,omitempty"`
 	Order  int                  `json:"order"`
 	Mute   bool                 `json:"mute"`

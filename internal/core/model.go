@@ -60,7 +60,8 @@ type Send struct {
 
 type Track struct {
 	ID       int32   `json:"id"`
-	Name     string  `json:"name"`
+	Name     string  `json:"-"`    // Sushi's track name: the key for metadata and Sushi calls
+	Label    string  `json:"name"` // name shown to the user; set by renameTrack, defaults to Name
 	Kind     string  `json:"kind"` // audio | midi | bus | pre | post
 	Color    string  `json:"color"`
 	Channels int     `json:"channels"`

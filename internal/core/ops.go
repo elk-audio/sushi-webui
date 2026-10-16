@@ -73,7 +73,8 @@ func (e *Engine) Command(op string, raw json.RawMessage) (map[string]any, error)
 	case "removeTrack":
 		err = e.removeTrack(a.Track)
 	case "renameTrack":
-		err = userErr("Sushi can't rename tracks yet")
+		structural = false
+		err = e.renameTrack(a.Track, a.Name)
 	case "setColor":
 		structural = false
 		err = e.withTrack(a.Track, func(t *Track) { t.Color = a.Color; e.meta.track(t.Name).Color = a.Color })
@@ -170,6 +171,49 @@ func (e *Engine) Command(op string, raw json.RawMessage) (map[string]any, error)
 		return map[string]any{"id": newID}, nil
 	}
 	return nil, nil
+}
+
+// renameTrack changes the name shown for a track. Sushi has no rename call, so the Sushi-side name
+// stays the same and the label is kept in the metadata (and saved with projects).
+func (e *Engine) renameTrack(id int32, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return userErr("a track needs a name")
+	}
+	if len([]rune(name)) > 40 {
+		return userErr("track names can have at most 40 characters")
+	}
+	err := e.withTrack(id, func(t *Track) {})
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	t := e.tracks[id]
+	if t.Kind == "pre" || t.Kind == "post" {
+		return userErr("%s can't be renamed", t.Label)
+	}
+	for _, o := range e.tracks {
+		if o.ID != id && strings.EqualFold(o.Label, name) {
+			return userErr("there is already a track called %q", name)
+		}
+	}
+	tm := e.meta.track(t.Name)
+	if name == t.Name {
+		tm.Label = ""
+	} else {
+		tm.Label = name
+	}
+	t.Label = name
+	e.stateDirty, e.metaDirty = true, true
+	for _, o := range e.tracks { // sends show the bus name
+		for _, s := range o.Sends {
+			if s.Bus == id {
+				s.BusName = name
+			}
+		}
+	}
+	return nil
 }
 
 func (e *Engine) withTrack(id int32, fn func(t *Track)) error {
