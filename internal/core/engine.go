@@ -202,6 +202,7 @@ func (e *Engine) session(ctx context.Context) error {
 	e.readTransport(c)
 
 	e.opMu.Lock()
+	e.resetStaleMeta(c)
 	if err := e.setupLocked(); err != nil {
 		slog.Error("initial setup failed", "err", err)
 	}
@@ -424,6 +425,19 @@ func (e *Engine) tickers(ctx context.Context) {
 				}
 			}
 		}
+	}
+}
+
+// FlushMeta writes pending metadata to disk; called on shutdown so the last changes aren't lost
+// to the 2-second persistence tick.
+func (e *Engine) FlushMeta() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.metaDirty {
+		if err := e.meta.save(e.metaPath()); err != nil {
+			slog.Warn("couldn't save metadata", "err", err)
+		}
+		e.metaDirty = false
 	}
 }
 
@@ -1109,4 +1123,47 @@ func pluginTypeEnum(s string) rpc.PluginType_Type {
 		return rpc.PluginType_LV2
 	}
 	return rpc.PluginType_DUMMY
+}
+
+// resetStaleMeta forgets the saved metadata (project name, colors, solo...) when Sushi came up with a
+// different set of tracks than the metadata describes, e.g. Sushi was restarted from its default
+// config after a project had been saved. The metadata is keyed by track names, so a matching set
+// means Sushi is still running the same session (only the backend restarted).
+func (e *Engine) resetStaleMeta(c *sushi.Client) {
+	all, err := c.Graph.GetAllTracks(ctxT(), sushi.Void)
+	if err != nil {
+		return
+	}
+	fixed := map[string]bool{} // PRE and POST tracks: not part of the user's session
+	live := map[string]bool{}
+	for _, t := range all.Tracks {
+		switch t.GetType().GetType() {
+		case rpc.TrackType_PRE, rpc.TrackType_POST:
+			fixed[t.Name] = true
+		default:
+			live[t.Name] = true
+		}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	same := true
+	for n := range e.meta.Tracks {
+		if !fixed[n] && !live[n] {
+			same = false
+		}
+	}
+	for n := range live {
+		if _, ok := e.meta.Tracks[n]; !ok {
+			same = false
+		}
+	}
+	if same {
+		return
+	}
+	slog.Info("Sushi's tracks don't match the saved metadata; starting a new untitled project", "project", e.meta.Project)
+	ui := e.meta.UI
+	e.meta = newMeta()
+	e.meta.UI = ui
+	e.st.Project = ProjectInfo{Name: e.meta.Project, List: listProjects(e.dataDir)}
+	e.metaDirty = true
 }

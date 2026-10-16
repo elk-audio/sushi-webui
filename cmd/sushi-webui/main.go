@@ -96,6 +96,7 @@ func main() {
 		slog.Error("http server", "err", err)
 		os.Exit(1)
 	}
+	eng.FlushMeta()
 }
 
 // noCacheIndex keeps browsers from caching index.html across upgrades (assets are content-hashed).
