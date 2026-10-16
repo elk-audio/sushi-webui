@@ -105,6 +105,7 @@ Routes are `#/mixer`, `#/track/Guitar` and `#/track/Guitar/plugin/Drive`. They c
 
 **Strip anatomy**, top to bottom:
 - **Colour tab and name:** tap to open the track; long-press to rename, recolour or delete.
+- **Delete:** a small trash button on every strip and phone row except Input and Master. It asks inline "Delete X and its N plugins?" (a bus also mentions the sends into it). Track mode has the same button in its header, and the desktop Mix panel keeps its Delete button.
 - **Kind badge:** AUDIO / MIDI / BUS, plus the input ("In 1", "MIDI port 0 · Omni") or, for a bus, its number of sends.
 - **Chain summary chips:** at most 3 plus "+n". Tapping a chip opens that plugin directly.
 - **Send knobs:** at most 2 mini knobs, each labelled with the bus name, plus "+n sends". This row is always reserved so faders line up across strips. It is empty on buses and is hidden on short screens.

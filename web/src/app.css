@@ -191,6 +191,12 @@ canvas.meter{display:block}
 .rm{height:30px;min-width:28px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--faint);border-radius:6px;flex:none}
 .rm:hover{color:var(--m-red)}
 .phead .rm{border:1px solid var(--line);padding:0 10px;color:var(--muted)}
+.strip-rm{position:absolute;top:4px;right:2px;height:24px;min-width:24px}
+.strip-name{padding-right:18px}
+.strip-confirm{position:absolute;inset:0;z-index:3;background:var(--s2);border-radius:var(--r);padding:8px 6px;flex-direction:column;align-items:stretch;justify-content:center;text-align:center;font-size:12px}
+.row-rm{height:34px;min-width:34px}
+.row-confirm{margin:0 0 6px}
+.thead .rm{border:1px solid var(--line);padding:0 10px;color:var(--muted)}
 .card-confirm{padding:8px;border-bottom:1px solid var(--line)}
 .card-prog{display:flex;align-items:center;gap:4px;padding:6px 8px 0}
 .card-prog button{height:28px}

@@ -3,6 +3,8 @@
   import { store } from '../lib/state.svelte';
   import { ui, go, navOrder, toggleMix, trackKey } from '../lib/ui.svelte';
   import { act, cmd } from '../lib/net/socket';
+  import { removeTrack, trackConfirmKey, trackConfirmText } from '../lib/actions';
+  import { ICON } from '../lib/icons';
   import { ROLE_ADD, ROLE_LABEL, isFixed, kindHtml, routeIn, sectionsFor } from '../lib/labels';
   import Meter from '../lib/widgets/Meter.svelte';
   import PluginCard from './PluginCard.svelte';
@@ -196,6 +198,15 @@
     <span class="kind">{@html kindHtml(s, track)}</span>
     <div class="spacer"></div>
     {#if track.meter >= 0}<Meter slot={track.meter} orient="h" title="{track.name} level" />{/if}
+    {#if !isFixed(track)}
+      {#if ui.confirm === trackConfirmKey(track)}
+        <div class="confirm" role="alertdialog" aria-label="Delete {track.name}">{trackConfirmText(s, track)}
+          <button class="yes" onclick={() => removeTrack(track)}>Delete</button>
+          <button class="no" onclick={() => (ui.confirm = '')}>Cancel</button></div>
+      {:else}
+        <button class="rm" aria-label="Delete {track.name}" title="Delete {track.kind === 'bus' ? 'bus' : 'track'}" onclick={() => (ui.confirm = trackConfirmKey(track))}>{@html ICON.trash}{#if !phone}<span>Delete {track.kind === 'bus' ? 'bus' : 'track'}</span>{/if}</button>
+      {/if}
+    {/if}
     <button class="mixbtn" aria-pressed={ui.showMix} onclick={toggleMix}>{phone ? 'Mix' : 'Mix & routing'}</button>
   </div>
   <div class="tbody">

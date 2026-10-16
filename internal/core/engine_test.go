@@ -57,6 +57,7 @@ type view struct {
 			Meter int    `json:"meter"`
 		} `json:"tracks"`
 		Master *struct {
+			ID   int32  `json:"id"`
 			Name string `json:"name"`
 			Kind string `json:"kind"`
 		} `json:"master"`
@@ -314,5 +315,24 @@ func TestEngineKeepsMidiSectionsOrdered(t *testing.T) {
 		if len(names) != 4 || names[0] != before[:strings.Index(before, ",")] {
 			t.Fatalf("chain = %v", names)
 		}
+	})
+}
+
+func TestEngineRemovesTracks(t *testing.T) {
+	forBoth(t, func(t *testing.T, r *rig) {
+		eventually(t, "connected", func() bool { return state(r.e).hasMaster() })
+		r.cmd(t, "addTrack", map[string]any{"kind": "audio", "name": "Guitar", "channels": 2})
+		var tid int32
+		eventually(t, "Guitar", func() bool { id, _, ok := state(r.e).track("Guitar"); tid = id; return ok })
+		r.addPlugin(t, tid, pluginsByRole(t, catalog.AudioFx, 1)[0])
+
+		r.cmd(t, "removeTrack", map[string]any{"track": tid})
+		eventually(t, "Guitar gone", func() bool { _, _, ok := state(r.e).track("Guitar"); return !ok })
+		if got := r.f.ProcessorNames("Guitar"); len(got) != 0 {
+			t.Fatalf("processors left behind: %v", got)
+		}
+
+		// Master can't be deleted.
+		r.cmdErr(t, "removeTrack", map[string]any{"track": state(r.e).State.Master.ID})
 	})
 }

@@ -5,7 +5,7 @@
   import { act } from '../lib/net/socket';
   import { gainCtl, panCtl } from '../lib/ctl';
   import { isFixed, routeIn } from '../lib/labels';
-  import { toggleMute, toggleSolo } from '../lib/actions';
+  import { toggleMute, toggleSolo, removeTrack, trackConfirmKey, trackConfirmText } from '../lib/actions';
   import { PALETTE } from '../lib/util';
   import Knob from '../lib/widgets/Knob.svelte';
   import VFader from '../lib/widgets/VFader.svelte';
@@ -49,12 +49,12 @@
   </div>
   <div class="spacer"></div>
   {#if !fixed}
-    {#if ui.confirm === 'deltrack'}
-      <div class="confirm">Delete {track.name} and its {track.chain.length} plugins?
-        <button class="yes" onclick={() => { ui.confirm = ''; act('removeTrack', { track: track.id }); }}>Delete</button>
+    {#if ui.confirm === trackConfirmKey(track)}
+      <div class="confirm">{trackConfirmText(s, track)}
+        <button class="yes" onclick={() => removeTrack(track)}>Delete</button>
         <button class="no" onclick={() => (ui.confirm = '')}>Cancel</button></div>
     {:else}
-      <button class="danger" onclick={() => (ui.confirm = 'deltrack')}>Delete {track.kind === 'bus' ? 'bus' : 'track'}</button>
+      <button class="danger" onclick={() => (ui.confirm = trackConfirmKey(track))}>Delete {track.kind === 'bus' ? 'bus' : 'track'}</button>
     {/if}
   {/if}
 </aside>

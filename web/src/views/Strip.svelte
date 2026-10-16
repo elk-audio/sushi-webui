@@ -1,10 +1,11 @@
 <script lang="ts">
   import type { Track } from '../lib/types';
   import { store } from '../lib/state.svelte';
-  import { go, trackKey } from '../lib/ui.svelte';
+  import { go, trackKey, ui } from '../lib/ui.svelte';
   import { gainCtl, panCtl, sendCtl } from '../lib/ctl';
   import { isFixed, kindHtml } from '../lib/labels';
-  import { toggleMute, toggleSolo } from '../lib/actions';
+  import { toggleMute, toggleSolo, removeTrack, trackConfirmKey, trackConfirmText } from '../lib/actions';
+  import { ICON } from '../lib/icons';
   import Knob from '../lib/widgets/Knob.svelte';
   import VFader from '../lib/widgets/VFader.svelte';
 
@@ -19,6 +20,14 @@
 
 <div class="strip {track.kind}" style="--tc:{track.color}">
   <button class="strip-name" disabled={!open} onclick={() => go({ view: 'track', t: key })}>{track.name}</button>
+  {#if !fixed}
+    <button class="rm strip-rm" aria-label="Delete {track.name}" title="Delete {track.kind === 'bus' ? 'bus' : 'track'}" onclick={() => (ui.confirm = trackConfirmKey(track))}>{@html ICON.trash}</button>
+    {#if ui.confirm === trackConfirmKey(track)}
+      <div class="strip-confirm confirm" role="alertdialog" aria-label="Delete {track.name}">{trackConfirmText(s, track)}
+        <button class="yes" onclick={() => removeTrack(track)}>Delete</button>
+        <button class="no" onclick={() => (ui.confirm = '')}>Cancel</button></div>
+    {/if}
+  {/if}
   <div class="kind">{@html kindHtml(s, track)}</div>
   <div class="chips">
     {#if open}
