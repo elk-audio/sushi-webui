@@ -22,6 +22,8 @@ type trackRec struct {
 	ch    int32
 	typ   rpc.TrackType_Type
 	procs []*procRec
+	ins   []*rpc.AudioConnection // audio routing
+	outs  []*rpc.AudioConnection
 }
 
 // Parameter ids the fake exposes: tracks have gain/pan/mute, peak meters level_0..1 / clip_0..1.
@@ -363,4 +365,79 @@ func (m *midi) GetInputPorts(context.Context, *rpc.GenericVoidValue) (*rpc.Gener
 
 func (m *midi) GetAllKbdInputConnections(context.Context, *rpc.GenericVoidValue) (*rpc.MidiKbdConnectionList, error) {
 	return &rpc.MidiKbdConnectionList{}, nil
+}
+
+type routing struct {
+	rpc.UnimplementedAudioRoutingControllerServer
+	f *Fake
+}
+
+func success() *rpc.CommandResponse { return &rpc.CommandResponse{Status: ok()} }
+
+func (r *routing) connect(in *rpc.AudioConnection, output bool) *rpc.CommandResponse {
+	r.f.mu.Lock()
+	defer r.f.mu.Unlock()
+	t := r.f.trackByID(in.GetTrack().GetId())
+	if t == nil {
+		return notFound()
+	}
+	if output {
+		t.outs = append(t.outs, in)
+	} else {
+		t.ins = append(t.ins, in)
+	}
+	return success()
+}
+
+func (r *routing) ConnectInputChannelToTrack(_ context.Context, in *rpc.AudioConnection) (*rpc.CommandResponse, error) {
+	return r.connect(in, false), nil
+}
+
+func (r *routing) ConnectOutputChannelFromTrack(_ context.Context, in *rpc.AudioConnection) (*rpc.CommandResponse, error) {
+	return r.connect(in, true), nil
+}
+
+func (r *routing) clear(id *rpc.TrackIdentifier, output bool) *rpc.CommandResponse {
+	r.f.mu.Lock()
+	defer r.f.mu.Unlock()
+	t := r.f.trackByID(id.Id)
+	if t == nil {
+		return notFound()
+	}
+	if output {
+		t.outs = nil
+	} else {
+		t.ins = nil
+	}
+	return success()
+}
+
+func (r *routing) DisconnectAllInputsFromTrack(_ context.Context, id *rpc.TrackIdentifier) (*rpc.CommandResponse, error) {
+	return r.clear(id, false), nil
+}
+
+func (r *routing) DisconnectAllOutputsFromTrack(_ context.Context, id *rpc.TrackIdentifier) (*rpc.CommandResponse, error) {
+	return r.clear(id, true), nil
+}
+
+func (r *routing) list(id *rpc.TrackIdentifier, output bool) *rpc.AudioConnectionListResponse {
+	r.f.mu.Lock()
+	defer r.f.mu.Unlock()
+	t := r.f.trackByID(id.Id)
+	if t == nil {
+		return &rpc.AudioConnectionListResponse{Status: &rpc.CommandStatus{Status: rpc.CommandStatus_NOT_FOUND}}
+	}
+	l := t.ins
+	if output {
+		l = t.outs
+	}
+	return &rpc.AudioConnectionListResponse{Status: ok(), Connections: slices.Clone(l)}
+}
+
+func (r *routing) GetInputConnectionsForTrack(_ context.Context, id *rpc.TrackIdentifier) (*rpc.AudioConnectionListResponse, error) {
+	return r.list(id, false), nil
+}
+
+func (r *routing) GetOutputConnectionsForTrack(_ context.Context, id *rpc.TrackIdentifier) (*rpc.AudioConnectionListResponse, error) {
+	return r.list(id, true), nil
 }

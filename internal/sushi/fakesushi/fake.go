@@ -94,6 +94,7 @@ func (f *Fake) Register(r grpc.ServiceRegistrar) {
 	rpc.RegisterTransportControllerServer(r, &transport{f: f})
 	rpc.RegisterTimingControllerServer(r, &timing{f: f})
 	rpc.RegisterAudioGraphControllerServer(r, &graph{f: f})
+	rpc.RegisterAudioRoutingControllerServer(r, &routing{f: f})
 	rpc.RegisterParameterControllerServer(r, &param{f: f})
 	rpc.RegisterMidiControllerServer(r, &midi{f: f})
 	rpc.RegisterNotificationControllerServer(r, &notify{f: f})
