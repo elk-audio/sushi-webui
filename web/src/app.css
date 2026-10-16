@@ -188,6 +188,10 @@ canvas.meter{display:block}
 .card-name small{display:block;font-weight:400;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis}
 .card-name:hover{color:var(--accent)}
 .handle{width:28px;height:30px;display:grid;place-items:center;color:var(--faint);cursor:grab;touch-action:none;flex:none}
+.rm{height:30px;min-width:28px;display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--faint);border-radius:6px;flex:none}
+.rm:hover{color:var(--m-red)}
+.phead .rm{border:1px solid var(--line);padding:0 10px;color:var(--muted)}
+.card-confirm{padding:8px;border-bottom:1px solid var(--line)}
 .card-prog{display:flex;align-items:center;gap:4px;padding:6px 8px 0}
 .card-prog button{height:28px}
 .card-prog .arr{width:28px;border-radius:5px;background:var(--s2);color:var(--muted)}
@@ -195,6 +199,12 @@ canvas.meter{display:block}
 .macros{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 4px;padding:10px 6px;justify-items:center}
 .macros .none{grid-column:1/-1;color:var(--faint);font-size:12px;text-align:center;padding:8px 0}
 .card.ghost{border-style:dashed;min-height:120px;display:grid;place-items:center;color:var(--muted);font-size:12px;text-align:center}
+.card.drop-before{box-shadow:-3px 0 0 var(--accent)}
+.card.drop-after{box-shadow:3px 0 0 var(--accent)}
+.is-phone .card.drop-before{box-shadow:0 -3px 0 var(--accent)}
+.is-phone .card.drop-after{box-shadow:0 3px 0 var(--accent)}
+.handle:focus-visible{outline:2px solid var(--accent);border-radius:6px}
+.handle.off{opacity:.25;pointer-events:none}
 .card.drag{z-index:5;box-shadow:0 12px 30px rgba(0,0,0,.6);border-color:var(--accent)}
 .card.send{width:176px;border-top:3px solid var(--tc)}
 .sendbody{display:flex;align-items:center;justify-content:space-around;gap:8px;padding:10px 8px}

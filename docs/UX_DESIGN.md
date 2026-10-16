@@ -216,7 +216,8 @@ Track mode is for the plugin chain and sends only. It shows the chain at full wi
 - Name; tap it to open Plugin mode.
 - Program selector with ‹ › and a list, shown when `program_count > 0`.
 - 2–6 pinned controls, chosen in Plugin mode.
-- A ⋮⋮ drag handle. Cards can only be dropped within their own section.
+- A trash button. It asks "Remove X? Remove / Cancel" inline on the card; there is no modal. Removing the instrument brings back its ＋ slot.
+- A ⋮⋮ drag handle. Cards can only be dropped within their own section, so a generator can't end up after an effect. The handle is disabled when the section has one card. Alt + arrow keys on the focused handle move the card one slot.
 
 **＋ slot:**
 - One at the end of each section. It opens the plugin browser filtered by that section's role.
@@ -260,7 +261,7 @@ Track mode is for the plugin chain and sends only. It shows the chain at full wi
    (dock with pan · fader · M S appears only when [Mix] is on)
 ```
 - **Collapsing:** tapping a card's header collapses or expands it. The first card of each section starts expanded.
-- **Reordering:** long-press the ⋮⋮ handle and drag vertically.
+- **Reordering:** long-press the ⋮⋮ handle (about a quarter of a second) and drag vertically. An accent line shows where the card will land, and the pane scrolls near its edges.
 - **Changing track:** swipe horizontally on the chain, or use the ‹ › buttons.
 
 ## 6. Plugin mode
@@ -303,6 +304,7 @@ Track mode is for the plugin chain and sends only. It shows the chain at full wi
 - **Outputs:** non-automatable (output) parameters appear in a separate "Outputs" group as read-only values or mini meters.
 - **Large plugins** (100+ parameters): the grid is virtualized, searchable, and groups start collapsed.
 - **"Choose card controls":** a selection mode where you tap up to 6 controls to pin them to the Track-mode card.
+- **Remove:** a Remove button in the header, with the same inline confirmation as on the card. After removal the view returns to the track.
 - **Desktop extras:** mouse wheel on knobs, Shift for fine control, double-click to reset.
 
 ### Phone portrait

@@ -188,7 +188,13 @@ canvas.meter{display:block}
 .section h3{margin:0;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;padding-top:2px}
 .section .cards{display:flex;gap:10px;align-items:flex-start}
 .card{width:208px;background:var(--s1);border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;position:relative;flex:none}
-.card.byp .macros,.card.byp .card-prog{opacity:.35}
+.card.byp .macros,.card.byp .rm{height:30px;min-width:28px;display:inline-flex;align-items:center;justify-content:center;color:var(--faint);border-radius:6px;flex:none}
+.rm:hover{color:var(--m-red)}
+.card-confirm{padding:8px;border-bottom:1px solid var(--line)}
+.confirm{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.confirm .yes{background:var(--m-red);color:#fff;border-radius:6px;padding:6px 10px;font-weight:700}
+.confirm .no{border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.card-prog{opacity:.35}
 .card.byp .card-name{color:var(--muted)}
 .card-head{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 8px;border-bottom:1px solid var(--line)}
 .pwr{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;color:var(--accent);background:var(--s2);flex:none}
@@ -590,6 +596,7 @@ function paint(el, v, c){
 
 // ---------------------------------------------------------------- html fragments
 const ICON = {
+  trash:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg>',
   bus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h5l5 6h8M3 18h5l5-6"/><path d="M18 9l3 3-3 3"/></svg>',
   power:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>',
   play:'<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l15 8-15 8z"/></svg>',
@@ -729,7 +736,9 @@ function card(t, ti, p, pi){
     <div class="card-head"><button class="pwr" data-act="bypass:${ti}:${pi}" aria-pressed="${!p.bypass}" aria-label="Bypass ${esc(p.name)}">${ICON.power}</button>
       <button class="card-name" ${S.size === 'phone' ? `data-act="collapse:${ti}:${pi}"` : `data-go="plugin:${ti}:${pi}"`}>${esc(p.name)}${sub}</button>
       ${S.size === 'phone' ? `<button class="pwr" data-go="plugin:${ti}:${pi}" aria-label="Open ${esc(p.name)}" style="color:var(--text)">›</button>` : ''}
+      <button class="rm" data-act="rmask:${ti}:${pi}" aria-label="Remove ${esc(p.name)}" title="Remove plugin">${ICON.trash}</button>
       <span class="handle" data-drag="${ti}:${pi}" aria-label="Drag to reorder">${ICON.grip}</span></div>
+    ${p.confirmRm ? `<div class="card-confirm confirm">Remove ${esc(p.name)}? <button class="yes" data-act="rmyes:${ti}:${pi}">Remove</button> <button class="no" data-act="rmno:${ti}:${pi}">Cancel</button></div>` : ''}
     ${prog}<div class="macros">${mac}</div></div>`;
 }
 function sectionsFor(t){
@@ -1168,6 +1177,9 @@ function doAct(a, e){
     case 'mute': trk(x).mute = !trk(x).mute; break;
     case 'solo': trk(x).solo = !trk(x).solo; break;
     case 'bypass': { const p = trk(x).chain[+y]; p.bypass = !p.bypass; break; }
+    case 'rmask': trk(x).chain[+y].confirmRm = true; break;
+    case 'rmno': trk(x).chain[+y].confirmRm = false; break;
+    case 'rmyes': trk(x).chain.splice(+y, 1); break;
     case 'collapse': { const p = trk(x).chain[+y]; p.collapsed = !p.collapsed; break; }
     case 'prog': { const p = trk(x).chain[+y]; const n = p.tpl.programs.length; p.program = (p.program + +z + n) % n; break; }
     case 'setprog': { trk(x).chain[+y].program = +z; if (S.sheet) S.sheet = null; break; }

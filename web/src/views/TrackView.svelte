@@ -68,55 +68,115 @@
     if (Math.abs(dx) > 70 && Math.abs(dx) > 2 * Math.abs(dy)) stepTrack(dx < 0 ? 1 : -1);
   }
 
-  // Drag-to-reorder within a section → movePlugin with the visible-chain index.
-  let reorder: { proc: number; el: HTMLElement; sec: Role; x0: number; y0: number; px: number; py: number; id: number } | null = null;
-  function startReorder(e: PointerEvent, el: HTMLElement, proc: number, sec: Role) {
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    reorder = { proc, el, sec, x0: e.clientX, y0: e.clientY, px: e.clientX, py: e.clientY, id: e.pointerId };
-    el.classList.add('drag');
-    const move = (ev: PointerEvent) => {
-      if (!reorder || ev.pointerId !== reorder.id) return;
-      reorder.px = ev.clientX; reorder.py = ev.clientY;
-      el.style.transform = phone ? `translateY(${ev.clientY - reorder.y0}px)` : `translateX(${ev.clientX - reorder.x0}px)`;
-    };
-    const up = (ev: PointerEvent) => {
-      const target = ev.currentTarget as HTMLElement;
-      target.removeEventListener('pointermove', move);
-      target.removeEventListener('pointerup', up);
-      target.removeEventListener('pointercancel', up);
-      finishReorder();
-    };
-    const h = e.currentTarget as HTMLElement;
-    h.addEventListener('pointermove', move);
-    h.addEventListener('pointerup', up);
-    h.addEventListener('pointercancel', up);
+  // Reorder within a section → movePlugin with the visible-chain index. The backend rejects moves across
+  // sections, and the UI never offers them: a drag only considers the cards of the dragged card's section.
+  const HOLD_MS = 250; // phone: hold the handle before a drag starts, so scrolling and swiping still work
+  let reorder: { proc: number; el: HTMLElement; x0: number; y0: number; px: number; py: number; id: number; raf: number } | null = null;
+
+  async function moveTo(proc: number, index: number) {
+    const snapshot = track.chain.map(p => p.id);
+    const cur = track.chain.findIndex(p => p.id === proc);
+    if (cur < 0 || index === cur) return;
+    const moved = track.chain.splice(cur, 1)[0]; // optimistic
+    track.chain.splice(index, 0, moved);
+    try { await cmd('movePlugin', { proc, index }); }
+    catch { // toasted; put the chain back until the next state arrives
+      const byId = new Map(track.chain.map(p => [p.id, p]));
+      track.chain = snapshot.map(id => byId.get(id)!).filter(Boolean);
+    }
   }
-  function finishReorder() {
-    const r = reorder;
-    reorder = null;
-    if (!r) return;
-    r.el.classList.remove('drag');
-    r.el.style.transform = '';
+
+  // Where a drop at the pointer would land: the chain index, and the card it goes next to.
+  function dropTarget(r: NonNullable<typeof reorder>) {
     const sectionEl = r.el.closest('.section');
-    if (!sectionEl) return;
+    if (!sectionEl) return null;
     const siblings = [...sectionEl.querySelectorAll<HTMLElement>('.card[data-proc]')].filter(c => c !== r.el);
-    let before: number | null = null;
+    if (!siblings.length) return null;
+    let before: HTMLElement | null = null;
     for (const c of siblings) {
       const b = c.getBoundingClientRect();
-      if (phone ? r.py < b.top + b.height / 2 : r.px < b.left + b.width / 2) { before = +c.dataset.proc!; break; }
+      if (phone ? r.py < b.top + b.height / 2 : r.px < b.left + b.width / 2) { before = c; break; }
     }
-    const rest = track.chain.filter(p => p.id !== r.proc).map(p => p.id);
-    let index: number;
-    if (before !== null) index = rest.indexOf(before);
-    else if (siblings.length) index = rest.indexOf(+siblings[siblings.length - 1].dataset.proc!) + 1;
-    else return;
-    const cur = track.chain.findIndex(p => p.id === r.proc);
-    if (index === cur) return;
-    // optimistic reorder
-    const moved = track.chain.splice(cur, 1)[0];
-    track.chain.splice(index, 0, moved);
-    act('movePlugin', { proc: r.proc, index });
+    const rest = track.chain.filter(p => p.id !== +r.el.dataset.proc!).map(p => p.id);
+    const next = before ?? siblings[siblings.length - 1];
+    const index = rest.indexOf(+next.dataset.proc!) + (before ? 0 : 1);
+    return { index, el: next, after: !before, siblings };
+  }
+  function markDrop(r: NonNullable<typeof reorder>) {
+    const d = dropTarget(r);
+    for (const c of document.querySelectorAll('.card.drop-before,.card.drop-after')) c.classList.remove('drop-before', 'drop-after');
+    d?.el.classList.add(d.after ? 'drop-after' : 'drop-before');
+  }
+  // Keep the dragged card under the pointer while the pane scrolls near its edges.
+  function autoScroll(r: NonNullable<typeof reorder>) {
+    const box = r.el.closest<HTMLElement>('.chainwrap');
+    if (box) {
+      const b = box.getBoundingClientRect(), edge = 48;
+      const dy = phone ? (r.py < b.top + edge ? -12 : r.py > b.bottom - edge ? 12 : 0) : 0;
+      const dx = !phone ? (r.px < b.left + edge ? -12 : r.px > b.right - edge ? 12 : 0) : 0;
+      if (dx || dy) { box.scrollBy(dx, dy); r.x0 -= dx; r.y0 -= dy; place(r); markDrop(r); }
+    }
+    r.raf = requestAnimationFrame(() => reorder && autoScroll(reorder));
+  }
+  const place = (r: NonNullable<typeof reorder>) => {
+    r.el.style.transform = phone ? `translateY(${r.py - r.y0}px)` : `translateX(${r.px - r.x0}px)`;
+  };
+
+  function startReorder(e: PointerEvent, el: HTMLElement, proc: number) {
+    const h = e.currentTarget as HTMLElement;
+    const pid = e.pointerId;
+    const touch = e.pointerType === 'touch';
+    let r: NonNullable<typeof reorder> | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const begin = () => {
+      if (r) return;
+      h.setPointerCapture(pid);
+      r = reorder = { proc, el, x0: x, y0: y, px: x, py: y, id: pid, raf: 0 };
+      el.classList.add('drag');
+      r.raf = requestAnimationFrame(() => reorder && autoScroll(reorder));
+      navigator.vibrate?.(8);
+    };
+    let x = e.clientX, y = e.clientY;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      x = ev.clientX; y = ev.clientY;
+      if (!r) { // before the hold completes, moving away means the user is scrolling
+        if (touch && Math.hypot(x - e.clientX, y - e.clientY) > 8) end(false);
+        return;
+      }
+      r.px = x; r.py = y;
+      place(r);
+      markDrop(r);
+    };
+    const end = (drop: boolean) => {
+      clearTimeout(timer);
+      h.removeEventListener('pointermove', move);
+      h.removeEventListener('pointerup', up);
+      h.removeEventListener('pointercancel', cancel);
+      if (!r) return;
+      cancelAnimationFrame(r.raf);
+      const fin = r;
+      reorder = null;
+      fin.el.classList.remove('drag');
+      fin.el.style.transform = '';
+      for (const c of document.querySelectorAll('.card.drop-before,.card.drop-after')) c.classList.remove('drop-before', 'drop-after');
+      if (drop) { const d = dropTarget(fin); if (d) moveTo(proc, d.index); }
+    };
+    const up = (ev: PointerEvent) => { if (ev.pointerId === pid) end(true); };
+    const cancel = (ev: PointerEvent) => { if (ev.pointerId === pid) end(false); };
+    h.addEventListener('pointermove', move);
+    h.addEventListener('pointerup', up);
+    h.addEventListener('pointercancel', cancel);
+    if (touch) timer = setTimeout(begin, HOLD_MS);
+    else { e.preventDefault(); begin(); }
+  }
+
+  // Keyboard: Alt+↑/↓ (Alt+←/→ on desktop) on the focused handle moves the plugin one slot within its section.
+  function nudge(proc: number, sec: Role, d: number) {
+    const peers = track.chain.filter(p => p.role === sec);
+    const k = peers.findIndex(p => p.id === proc), to = peers[k + d];
+    if (k < 0 || !to) return;
+    moveTo(proc, track.chain.findIndex(p => p.id === to.id));
   }
 </script>
 
@@ -149,7 +209,8 @@
               {#each items as p, i (p.id)}
                 <PluginCard proc={p} tkey={key} collapsed={isCollapsed(p.id, i === 0)}
                   ontoggle={() => (collapsed[p.id] = !isCollapsed(p.id, i === 0))}
-                  onhandle={(e, el) => startReorder(e, el, p.id, sec)} />
+                  onhandle={(e, el) => startReorder(e, el, p.id)}
+                  onnudge={d => nudge(p.id, sec, d)} movable={items.length > 1} />
               {/each}
               {#if !(sec === 'instrument' && items.length >= 1)}
                 <button class="addslot" aria-label="Add {ROLE_ADD[sec]}" onclick={() => (ui.sheet = { kind: 'browse', track: track.id, section: sec })}>{phone ? '＋ Add ' + ROLE_ADD[sec] : '＋'}</button>

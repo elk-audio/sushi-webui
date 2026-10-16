@@ -5,6 +5,7 @@
   import { store, toast } from '../lib/state.svelte';
   import { ui, go, trackKey } from '../lib/ui.svelte';
   import { act, cmd } from '../lib/net/socket';
+  import { confirmKey, removePlugin } from '../lib/actions';
   import { paramCtl } from '../lib/ctl';
   import { ICON } from '../lib/icons';
   import Knob from '../lib/widgets/Knob.svelte';
@@ -109,6 +110,13 @@
       {#if !phone}<input type="search" placeholder="Filter parameters" aria-label="Filter parameters" bind:value={ui.filter} />{/if}
       {#if phone || !proc.programs.length}
         <button class="pinbtn ghost-btn" aria-pressed={ui.pinMode} onclick={() => (ui.pinMode = !ui.pinMode)}>{ui.pinMode ? 'Done' : 'Choose card controls'}</button>
+      {/if}
+      {#if ui.confirm === confirmKey(proc.id)}
+        <div class="confirm">Remove {proc.name}?
+          <button class="yes" onclick={() => removePlugin(proc.id)}>Remove</button>
+          <button class="no" onclick={() => (ui.confirm = '')}>Cancel</button></div>
+      {:else}
+        <button class="rm" aria-label="Remove {proc.name}" title="Remove plugin" onclick={() => (ui.confirm = confirmKey(proc.id))}>{@html ICON.trash}{#if !phone}<span>Remove</span>{/if}</button>
       {/if}
       {#if track.meter >= 0}<Meter slot={track.meter} orient="v" title="{track.name} level" />{/if}
       {#if ui.pinMode}<div class="pinhint">Tap up to 6 controls to show on the {track.name} track card. {proc.macros.length}/6 chosen.</div>{/if}

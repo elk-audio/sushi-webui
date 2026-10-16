@@ -2,13 +2,14 @@
   import type { Processor } from '../lib/types';
   import { ui, go } from '../lib/ui.svelte';
   import { act } from '../lib/net/socket';
+  import { confirmKey, removePlugin } from '../lib/actions';
   import { paramCtl } from '../lib/ctl';
   import { ICON } from '../lib/icons';
   import Knob from '../lib/widgets/Knob.svelte';
 
-  let { proc, tkey, collapsed = false, ontoggle, onhandle }: {
+  let { proc, tkey, collapsed = false, ontoggle, onhandle, onnudge, movable = true }: {
     proc: Processor; tkey: string; collapsed?: boolean; ontoggle?: () => void;
-    onhandle?: (e: PointerEvent, el: HTMLElement) => void;
+    onhandle?: (e: PointerEvent, el: HTMLElement) => void; onnudge?: (d: number) => void; movable?: boolean;
   } = $props();
   let phone = $derived(ui.size === 'phone');
   let card: HTMLElement;
@@ -33,8 +34,19 @@
     {:else}
       <button class="card-name" onclick={() => go({ view: 'plugin', t: tkey, p: proc.id })}>{proc.name}{#if sub}<small>{sub}</small>{/if}</button>
     {/if}
-    <span class="handle" role="button" tabindex="-1" aria-label="Drag to reorder" onpointerdown={e => onhandle?.(e, card)}>{@html ICON.grip}</span>
+    <button class="rm" aria-label="Remove {proc.name}" title="Remove plugin" onclick={() => (ui.confirm = confirmKey(proc.id))}>{@html ICON.trash}</button>
+    <span class="handle" class:off={!movable} role="button" tabindex={movable ? 0 : -1} aria-label="Reorder {proc.name}: drag, or Alt plus arrow keys"
+      onpointerdown={e => onhandle?.(e, card)}
+      onkeydown={e => {
+        const d = e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : 0;
+        if (e.altKey && d) { e.preventDefault(); onnudge?.(d); }
+      }}>{@html ICON.grip}</span>
   </div>
+  {#if ui.confirm === confirmKey(proc.id)}
+    <div class="card-confirm confirm">Remove {proc.name}?
+      <button class="yes" onclick={() => removePlugin(proc.id)}>Remove</button>
+      <button class="no" onclick={() => (ui.confirm = '')}>Cancel</button></div>
+  {/if}
   {#if proc.programs.length}
     <div class="card-prog">
       <button class="arr" aria-label="Previous program" onclick={() => step(-1)}>‹</button>
