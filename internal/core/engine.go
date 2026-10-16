@@ -42,10 +42,11 @@ type meterSlot struct {
 type sendKey struct{ track, bus int32 }
 
 type Engine struct {
-	addr    string
-	dataDir string
-	cat     *catalog.Catalog
-	sink    Sink
+	addr     string
+	dataDir  string
+	cat      *catalog.Catalog
+	audioDir string // base folder for Wav Streamer files
+	sink     Sink
 
 	opMu sync.Mutex // serializes graph operations and refreshes
 

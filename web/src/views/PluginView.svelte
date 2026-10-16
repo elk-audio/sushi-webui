@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { paramText } from '../lib/util';
   import type { Param, Processor, Track } from '../lib/types';
   import { store, toast } from '../lib/state.svelte';
@@ -59,6 +60,23 @@
     p.n = p.n >= 0.5 ? 0 : 1;
     paramCtl(proc.id, p).set(p.n);
   }
+  // Wav Streamer: the file property is a picker over the backend's audio folder; choosing a file also
+  // starts looped playback (the backend sets "playing" and "loop").
+  let isWav = $derived(proc.uid === 'sushi.testing.wav_streamer');
+  let wavs = $state<string[] | null>(null);
+  let wavBusy = $state(false);
+  async function loadWavs() {
+    try { wavs = ((await cmd('listWavs')) as { files: string[] }).files; } catch { wavs = []; }
+  }
+  // untrack: cmd() reads and writes store.busy, which would otherwise make this effect re-run forever
+  $effect(() => { if (isWav) untrack(loadWavs); });
+  async function pickWav(file: string) {
+    if (!file) return;
+    wavBusy = true;
+    try { await cmd('setWavFile', { proc: proc.id, value: file }); } catch { /* toasted */ } finally { wavBusy = false; }
+  }
+  // The property holds an absolute path; show it relative to the picker's list.
+  const wavValue = (v: string) => (wavs ?? []).find(f => v === f || v.endsWith('/' + f)) ?? '';
   function commitProp(id: number, value: string) {
     cmd('setProperty', { proc: proc.id, prop: id, value }).catch(() => {});
   }
@@ -127,9 +145,17 @@
             {#each proc.props as pr (pr.id)}
               <div class="prop">
                 <label for="prop-{proc.id}-{pr.id}">{pr.label || pr.name}</label>
+                {#if isWav && pr.name === 'file'}
+                  <select id="prop-{proc.id}-{pr.id}" disabled={wavBusy || !wavs?.length} value={wavValue(pr.value)} onchange={e => pickWav(e.currentTarget.value)}>
+                    <option value="" disabled>{wavs === null ? 'Loading…' : wavs.length ? 'Choose a wav file' : 'No wav files in the audio folder'}</option>
+                    {#each wavs ?? [] as f (f)}<option value={f}>{f}</option>{/each}
+                  </select>
+                  <button class="ghost-btn" disabled={wavBusy} onclick={loadWavs}>Rescan</button>
+                {:else}
                 <input id="prop-{proc.id}-{pr.id}" value={pr.value}
                   onkeydown={e => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
                   onchange={e => commitProp(pr.id, (e.currentTarget as HTMLInputElement).value)} />
+                {/if}
               </div>
             {/each}
           </div>

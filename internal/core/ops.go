@@ -115,6 +115,11 @@ func (e *Engine) Command(op string, raw json.RawMessage) (map[string]any, error)
 	case "setProperty":
 		structural = false
 		err = e.setProperty(a.Proc, a.Prop, a.Value)
+	case "listWavs":
+		return map[string]any{"files": e.listWavs()}, nil
+	case "setWavFile":
+		structural = false
+		err = e.setWavFile(a.Proc, a.Value)
 	case "addSend":
 		err = e.addSend(a.Track, a.Bus)
 	case "removeSend":

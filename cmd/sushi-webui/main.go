@@ -37,6 +37,7 @@ func main() {
 	var pluginPaths multiFlag
 	flag.Var(&pluginPaths, "plugin-path", "extra folder to look for the plugins in the list (repeatable)")
 	pluginList := flag.String("plugin-list", "", "categorized plugin list (JSON, sushi-gui installed_plugins.json format); default: built-in list")
+	audioDir := flag.String("audio-dir", filepath.Join(home, "Music"), "base folder for the Wav Streamer file picker (*.wav, searched 3 levels deep)")
 	flag.Parse()
 
 	var lvl slog.Level
@@ -65,6 +66,7 @@ func main() {
 	cat := catalog.Build(*pluginList, vst2, vst3, lv2)
 
 	eng := core.New(*sushiAddr, *dataDir, cat)
+	eng.SetAudioDir(*audioDir)
 	h := hub.New(eng, *dev)
 	eng.SetSink(h)
 
