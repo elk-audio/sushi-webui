@@ -9,7 +9,8 @@ Where v1 of the code differs from ARCHITECTURE.md, and what testing against Sush
 - **Unique names:** Sushi needs globally unique processor names.
   - Hidden processors get a random suffix: `__meter__Guitar#a1b2`, `__return__Reverb#…`, `__send__Guitar__Reverb#…`.
   - User plugins are named after the plugin, with " 2", " 3" and so on added for duplicates.
-- **Renaming tracks** isn't possible: Sushi has no rename RPC. The command returns an error.
+- **Renaming tracks:** Sushi has no rename RPC, so `renameTrack` stores a display label in the metadata (`TrackMeta.Label`, saved with projects). The Sushi-side name stays the key for metadata and Sushi calls; the state's `name` is the label. Input and Master can't be renamed.
+- **Stale metadata:** on every connection the backend compares Sushi's tracks with the names in `current.meta.json`. If they differ (Sushi restarted from its default config), the metadata, including the project name, is reset to an untitled project.
 - **Bypass and program** changes have no Sushi notification, so the backend updates its mirror after a successful call.
 - **Plugin identity:** for processors created outside the WebUI, uid/type/path come from one `SaveSession` call. The role is then looked up in the catalog.
 - **Catalog:** a predefined categorized list (`internal/catalog/plugins.json`, vendor → category → plugin, same format as sushi-gui's `installed_plugins.json`; `--plugin-list` replaces it).

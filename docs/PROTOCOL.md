@@ -81,7 +81,7 @@ interface CatalogEntry { id: string; name: string; vendor: string /* top level, 
 |----|------|
 | `addTrack` | `{kind:'audio'\|'midi'\|'bus', name, channels?:1\|2, input?:int (first engine input, 0-based), output?:int (first engine output), midiPort?:int, midiChannel?:int (0 = omni, 1..16), instrument?:catalogId, fx?:catalogId, sendFrom?:trackId}` |
 | `removeTrack` | `{track}` |
-| `renameTrack` | `{track, name}` |
+| `renameTrack` | `{track, name}` (1–40 characters, unique among tracks; not for Input/Master) |
 | `setColor` | `{track, color}` |
 | `setMute` / `setSolo` | `{track, on}` |
 | `addPlugin` | `{track, catalogId, section: Role}` |
