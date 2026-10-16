@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -18,6 +19,8 @@ import (
 	"github.com/elk-audio/sushi-webui/internal/catalog"
 	"github.com/elk-audio/sushi-webui/internal/core"
 	"github.com/elk-audio/sushi-webui/internal/hub"
+	"github.com/elk-audio/sushi-webui/internal/sushi"
+	"github.com/elk-audio/sushi-webui/internal/sushi/zmqconn"
 	"github.com/elk-audio/sushi-webui/web"
 )
 
@@ -29,7 +32,10 @@ func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 func main() {
 	home, _ := os.UserHomeDir()
 	listen := flag.String("listen", ":8080", "HTTP listen address")
-	sushiAddr := flag.String("sushi", "localhost:51051", "Sushi gRPC address")
+	transport := flag.String("transport", "grpc", "how to talk to Sushi: grpc | zmq (ZeroMQ, same machine only)")
+	sushiAddr := flag.String("sushi", "localhost:51051", "Sushi gRPC address (--transport grpc)")
+	zmqControl := flag.String("zmq-control", zmqconn.DefaultControl, "Sushi ZeroMQ control endpoint (--transport zmq)")
+	zmqNotify := flag.String("zmq-notify", zmqconn.DefaultNotify, "Sushi ZeroMQ notification endpoint (--transport zmq)")
 	dataDir := flag.String("data-dir", filepath.Join(home, ".config", "sushi-webui"), "directory for projects and settings")
 	webDir := flag.String("web-dir", "", "serve the frontend from this directory instead of the embedded build")
 	dev := flag.Bool("dev", false, "development mode: accept WebSocket connections from any origin (Vite proxy)")
@@ -65,7 +71,17 @@ func main() {
 	lv2 = append(lv2, pluginPaths...)
 	cat := catalog.Build(*pluginList, vst2, vst3, lv2)
 
-	eng := core.New(*sushiAddr, *dataDir, cat)
+	var dialer sushi.Dialer
+	switch *transport {
+	case "grpc":
+		dialer = sushi.GRPCDialer(*sushiAddr)
+	case "zmq":
+		dialer = sushi.ZMQDialer(zmqconn.Config{Control: *zmqControl, Notify: *zmqNotify})
+	default:
+		fmt.Fprintf(os.Stderr, "unknown --transport %q (want grpc or zmq)\n", *transport)
+		os.Exit(2)
+	}
+	eng := core.New(dialer, *dataDir, cat)
 	eng.SetAudioDir(*audioDir)
 	h := hub.New(eng, *dev)
 	eng.SetSink(h)
@@ -91,7 +107,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(sctx)
 	}()
-	slog.Info("sushi-webui listening", "addr", *listen, "sushi", *sushiAddr, "data", *dataDir)
+	slog.Info("sushi-webui listening", "addr", *listen, "sushi", dialer.Name, "data", *dataDir)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("http server", "err", err)
 		os.Exit(1)

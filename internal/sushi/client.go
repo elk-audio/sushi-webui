@@ -6,20 +6,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	rpc "github.com/elk-audio/sushi-webui/internal/sushirpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Void is the empty request message.
 var Void = &rpc.GenericVoidValue{}
 
-// Client bundles the per-service gRPC clients of one Sushi connection.
+// Client bundles the per-service gRPC clients of one Sushi connection. The connection can be real
+// gRPC or the ZeroMQ adapter (zmqconn); everything above this type is transport-agnostic.
 type Client struct {
-	Conn      *grpc.ClientConn
+	closer    io.Closer
 	System    rpc.SystemControllerClient
 	Transport rpc.TransportControllerClient
 	Timing    rpc.TimingControllerClient
@@ -35,14 +36,10 @@ type Client struct {
 	asyncDone map[int32]chan rpc.CommandStatus_Status
 }
 
-// Dial creates a client for the given address. The connection is lazy; use Ping to check it.
-func Dial(addr string) (*Client, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
-	}
+// New builds a Client on an established connection. closer is called by Close.
+func New(conn grpc.ClientConnInterface, closer io.Closer) *Client {
 	return &Client{
-		Conn:      conn,
+		closer:    closer,
 		System:    rpc.NewSystemControllerClient(conn),
 		Transport: rpc.NewTransportControllerClient(conn),
 		Timing:    rpc.NewTimingControllerClient(conn),
@@ -54,10 +51,10 @@ func Dial(addr string) (*Client, error) {
 		Session:   rpc.NewSessionControllerClient(conn),
 		Notify:    rpc.NewNotificationControllerClient(conn),
 		asyncDone: map[int32]chan rpc.CommandStatus_Status{},
-	}, nil
+	}
 }
 
-func (c *Client) Close() error { return c.Conn.Close() }
+func (c *Client) Close() error { return c.closer.Close() }
 
 // Ctx returns a context with a short timeout for unary calls.
 func Ctx() (context.Context, context.CancelFunc) {

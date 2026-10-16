@@ -42,7 +42,7 @@ type meterSlot struct {
 type sendKey struct{ track, bus int32 }
 
 type Engine struct {
-	addr     string
+	dialer   sushi.Dialer
 	dataDir  string
 	cat      *catalog.Catalog
 	audioDir string // base folder for Wav Streamer files
@@ -75,9 +75,9 @@ type Engine struct {
 	refreshReq chan struct{}
 }
 
-func New(addr, dataDir string, cat *catalog.Catalog) *Engine {
+func New(dialer sushi.Dialer, dataDir string, cat *catalog.Catalog) *Engine {
 	e := &Engine{
-		addr: addr, dataDir: dataDir, cat: cat,
+		dialer: dialer, dataDir: dataDir, cat: cat,
 		params: map[pkey]*Param{}, meterRefs: map[pkey]meterRef{}, tracks: map[int32]*Track{}, trackOf: map[int32]int32{},
 		slots: map[int32]int{}, meters: map[int]*meterSlot{}, procCache: map[int32]*Proc{}, hidParams: map[int32]map[string]int32{},
 		muteKeys: map[pkey]int32{}, mixKeys: map[pkey]int32{}, pendSet: map[pkey]float32{}, pendSend: map[sendKey]float32{},
@@ -141,7 +141,7 @@ func (e *Engine) Run(ctx context.Context) {
 		if time.Since(start) > 10*time.Second {
 			backoff = 500 * time.Millisecond
 		}
-		slog.Warn("sushi connection lost, retrying", "addr", e.addr, "err", err, "in", backoff)
+		slog.Warn("sushi connection lost, retrying", "sushi", e.dialer.Name, "err", err, "in", backoff)
 		select {
 		case <-ctx.Done():
 			return
@@ -152,7 +152,7 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 func (e *Engine) session(ctx context.Context) error {
-	c, err := sushi.Dial(e.addr)
+	c, err := e.dialer.Dial()
 	if err != nil {
 		return err
 	}
