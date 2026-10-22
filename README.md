@@ -1,36 +1,46 @@
 # sushi-webui
 
-Responsive web control surface for the [Sushi](https://github.com/elk-audio/sushi) plugin host: a Mixer → Track → Plugin workflow for desktop, tablet and phone, with live meters, buses and sends.
+Responsive web control surface for the [Sushi](https://github.com/elk-audio/sushi) plugin host.
+
+It offers a standard Mixer → Track → Plugin workflow for desktop, tablet and phone, with live meters, buses and sends.
 
 A Go backend talks to Sushi over gRPC and serves a Svelte frontend over HTTP and WebSocket from the same machine. The result is a single binary with no runtime dependencies.
 
 ## Quick start (macOS)
 
-Prerequisites: Go ≥ 1.22, Node ≥ 20 (build time only), `protoc` (only to regenerate stubs), and a Sushi build with gRPC.
+You need Go 1.25 or newer, Node 20 or newer (only to build the frontend), and a Sushi 1.4 build with gRPC enabled. `protoc` is only needed to regenerate the gRPC stubs.
 
-```sh
-# 1. Start Sushi (CoreAudio; see docs/IMPLEMENTATION_NOTES.md for why not --dummy)
-./dev/run-sushi.sh                 # SUSHI_DIR defaults to ../sushi/build-macos-universal/dist/sushi-1.4.0
+Point `SUSHI_DIR` at the folder that contains the `sushi` binary and your plugins:
 
-# 2. Build and run the WebUI (in another terminal)
-make                               # builds web/dist, then bin/sushi-webui with the UI embedded
-./bin/sushi-webui --plugin-path ../sushi/build-macos-universal/dist/sushi-1.4.0
+    $ export SUSHI_DIR=/path/to/sushi/dist/sushi-1.4.0
 
-# 3. Open http://localhost:8080  (or http://<this-mac>.local:8080 from a phone on the same network)
-```
+Start Sushi with Core Audio in one terminal:
 
-> The default track "Audio 1" takes the Mac's default input (microphone) and plays it to the default output. Turn the volume down or mute Master if you're on speakers.
+    $ ./dev/run-sushi.sh
 
-Frontend development with hot reload: `make dev`. This starts the backend with `--dev` and Vite on http://localhost:5173, which proxies `/ws` to the backend.
+Build and run the WebUI in another:
+
+    $ make
+    $ ./bin/sushi-webui --plugin-path $SUSHI_DIR
+
+Then open http://localhost:8081. From a phone on the same network, use `http://<hostname>.local:8081`.
+
+`run-sushi.sh` uses Core Audio instead of `--dummy`, because the dummy frontend crashes Sushi on graph edits. See `docs/IMPLEMENTATION_NOTES.md`.
+
+The default config routes the Mac's default input (the microphone) to the default output. Lower the volume or mute Master if you are on speakers.
+
+To run both processes with one command, use `./dev/run-all.sh`. It takes the same `SUSHI_DIR`, plus optional `AUDIO_DIR`, `LISTEN` and `MIDI_DEVICE`.
+
+For frontend development with hot reload, run `make dev`. It starts the backend with `--dev` and Vite on http://localhost:5173, which proxies `/ws` to the backend.
 
 ## Backend flags
 
 | Flag | Default | |
 |------|---------|--|
-| `--listen` | `:8080` | HTTP/WebSocket address |
+| `--listen` | `:8081` | HTTP/WebSocket address |
 | `--sushi` | `localhost:51051` | Sushi gRPC address |
 | `--data-dir` | `~/.config/sushi-webui` | projects (`projects/*.sushiproj`), current metadata, `plugins.json` |
-| `--plugin-list` | built-in list | categorized plugin list (vendor → category → plugin, sushi-gui `installed_plugins.json` format). External plugins not found on this machine are dropped at startup |
+| `--plugin-list` | built-in list | categorized plugin list (vendor → category → plugin, sushi-gui `installed_plugins.json` format). Plugins that are not installed are dropped at startup |
 | `--plugin-path` | — | extra folder where the listed VST2/VST3/LV2 plugins are looked for (repeatable) |
 | `--audio-dir` | `~/Music` | base folder for the Wav Streamer file picker (`*.wav`, up to 3 levels deep) |
 | `--web-dir` | — | serve the frontend from disk instead of the embedded build |
@@ -52,6 +62,9 @@ mockups/index.html    the approved interactive UX sketch
 dev/                  Sushi launcher and config for development
 ```
 
-## Elk Audio OS
+## License
 
-`make arm64` builds a static `bin/sushi-webui-linux-arm64`. Deployment (systemd unit, `/udata` install) is specified in `docs/ARCHITECTURE.md` §8 but not yet tested on a device.
+sushi-webui is licensed under the [GNU Affero General Public License v3](LICENSE).
+
+---
+Copyright 2026 Elk Audio AB, Stockholm, Sweden.
