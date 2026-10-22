@@ -605,7 +605,13 @@ func (e *Engine) createUserProc(track int32, ce *catalog.Entry, before int32) (i
 	if _, err := e.client().ProcessorID(name); err == nil { // also taken by something we don't show
 		name = uniqueName(ce.Name)
 	}
-	id, err := e.createProc(track, name, ce.UID, ce.Path, ce.Type, before)
+	uid, path := ce.UID, ce.Path
+	if ce.Type == "lv2" {
+		// Sushi takes the LV2 plugin URI in the path field (the "uri" key of its JSON configs);
+		// with it only in uid, CreateProcessorOnTrack fails with a bare ERROR.
+		path = ce.UID
+	}
+	id, err := e.createProc(track, name, uid, path, ce.Type, before)
 	if err != nil {
 		return 0, err
 	}
