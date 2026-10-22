@@ -31,7 +31,7 @@ func (m *multiFlag) Set(v string) error { *m = append(*m, v); return nil }
 
 func main() {
 	home, _ := os.UserHomeDir()
-	listen := flag.String("listen", ":8080", "HTTP listen address")
+	listen := flag.String("listen", ":8081", "HTTP listen address")
 	transport := flag.String("transport", "grpc", "how to talk to Sushi: grpc | zmq (ZeroMQ, same machine only)")
 	sushiAddr := flag.String("sushi", "localhost:51051", "Sushi gRPC address (--transport grpc)")
 	zmqControl := flag.String("zmq-control", zmqconn.DefaultControl, "Sushi ZeroMQ control endpoint (--transport zmq)")
