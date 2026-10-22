@@ -22,6 +22,7 @@ export interface Track {
   mute: boolean; solo: boolean;
   input: string; output: string;
   inChan: number; outChan: number; inMono: boolean;  // first engine channel (0-based, -1 = none); inMono: dual-mono input
+  midiPort: number; midiChan: number;  // MIDI tracks: input port (-1 = none) and channel (0 = omni, 1..16)
   chain: Processor[]; sends: Send[];
   meter: number;
 }

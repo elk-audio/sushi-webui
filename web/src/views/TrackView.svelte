@@ -213,7 +213,7 @@
   <div class="tbody">
     <div class="chainwrap" onpointerdown={swDown} onpointerup={swUp} role="presentation">
       <div class="chain">
-        {#if ui.showMix}<div class="io"><b>{inL}</b>{#if track.kind === 'audio'}<RouteSelect {track} dir="in" />{:else}<span>{inV}</span>{/if}<span class="arrow">→</span></div>{/if}
+        {#if ui.showMix}<div class="io"><b>{inL}</b>{#if track.kind === 'audio' || track.kind === 'midi'}<RouteSelect {track} dir="in" />{:else}<span>{inV}</span>{/if}<span class="arrow">→</span></div>{/if}
         {#each sections as { sec, items } (sec)}
           <div class="section">
             <h3>{ROLE_LABEL[sec]}</h3>

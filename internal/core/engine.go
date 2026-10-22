@@ -963,7 +963,7 @@ func macroIDs(p *Proc, names []string) []int32 {
 }
 
 func (e *Engine) routing(c *sushi.Client, t *Track, kbd *rpc.MidiKbdConnection) (string, string) {
-	t.InChan, t.OutChan, t.InMono = -1, -1, false
+	t.InChan, t.OutChan, t.InMono, t.MidiPort, t.MidiChan = -1, -1, false, -1, 0
 	chans := func(prefix string, conns []*rpc.AudioConnection) (string, int, bool) {
 		var ch []int
 		for _, a := range conns {
@@ -999,6 +999,10 @@ func (e *Engine) routing(c *sushi.Client, t *Track, kbd *rpc.MidiKbdConnection) 
 			chn = fmt.Sprintf("ch %d", int(c))
 		}
 		in = fmt.Sprintf("MIDI port %d · %s", kbd.Port, chn)
+		t.MidiPort = int(kbd.Port)
+		if c := kbd.GetChannel().GetChannel(); c != rpc.MidiChannel_MIDI_CH_OMNI {
+			t.MidiChan = int(c)
+		}
 	} else if r, err := c.Routing.GetInputConnectionsForTrack(ctxT(), &rpc.TrackIdentifier{Id: t.ID}); err == nil {
 		in, t.InChan, t.InMono = chans("In", r.Connections)
 	}

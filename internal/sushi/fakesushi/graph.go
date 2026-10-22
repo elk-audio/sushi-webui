@@ -24,6 +24,7 @@ type trackRec struct {
 	procs []*procRec
 	ins   []*rpc.AudioConnection // audio routing
 	outs  []*rpc.AudioConnection
+	kbd   *rpc.MidiKbdConnection // keyboard input connection
 }
 
 // Parameter ids the fake exposes: tracks have gain/pan/mute, peak meters level_0..1 / clip_0..1.
@@ -364,7 +365,41 @@ func (m *midi) GetInputPorts(context.Context, *rpc.GenericVoidValue) (*rpc.Gener
 }
 
 func (m *midi) GetAllKbdInputConnections(context.Context, *rpc.GenericVoidValue) (*rpc.MidiKbdConnectionList, error) {
-	return &rpc.MidiKbdConnectionList{}, nil
+	m.f.mu.Lock()
+	defer m.f.mu.Unlock()
+	l := &rpc.MidiKbdConnectionList{}
+	for _, t := range m.f.tracks {
+		if t.kbd != nil {
+			l.Connections = append(l.Connections, t.kbd)
+		}
+	}
+	return l, nil
+}
+
+func (m *midi) ConnectKbdInputToTrack(_ context.Context, in *rpc.MidiKbdConnection) (*rpc.CommandResponse, error) {
+	m.f.mu.Lock()
+	defer m.f.mu.Unlock()
+	t := m.f.trackByID(in.GetTrack().GetId())
+	if t == nil {
+		return notFound(), nil
+	}
+	t.kbd = in
+	return success(), nil
+}
+
+// DisconnectKbdInput, like Sushi, only removes a connection that matches port and channel.
+func (m *midi) DisconnectKbdInput(_ context.Context, in *rpc.MidiKbdConnection) (*rpc.CommandResponse, error) {
+	m.f.mu.Lock()
+	defer m.f.mu.Unlock()
+	t := m.f.trackByID(in.GetTrack().GetId())
+	if t == nil {
+		return notFound(), nil
+	}
+	if t.kbd == nil || t.kbd.Port != in.Port || t.kbd.GetChannel().GetChannel() != in.GetChannel().GetChannel() {
+		return &rpc.CommandResponse{Status: &rpc.CommandStatus{Status: rpc.CommandStatus_NOT_FOUND}}, nil
+	}
+	t.kbd = nil
+	return success(), nil
 }
 
 type routing struct {

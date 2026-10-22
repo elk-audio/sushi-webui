@@ -417,3 +417,51 @@ func TestEngineRoutesTracks(t *testing.T) {
 		r.cmdErr(t, "setRouting", map[string]any{"track": state(r.e).State.Master.ID, "output": 0})
 	})
 }
+
+func TestEngineRoutesMidiInput(t *testing.T) {
+	forBoth(t, func(t *testing.T, r *rig) {
+		eventually(t, "connected", func() bool { return state(r.e).hasMaster() })
+		r.cmd(t, "addTrack", map[string]any{"kind": "midi", "name": "Keys", "midiPort": 0, "midiChannel": 3})
+		r.cmd(t, "addTrack", map[string]any{"kind": "audio", "name": "Guitar", "channels": 2})
+		var kid, gid int32
+		midi := func() (port, ch int, txt string) {
+			var v struct {
+				State struct {
+					Tracks []struct {
+						Name  string `json:"name"`
+						Input string `json:"input"`
+						Port  int    `json:"midiPort"`
+						Chan  int    `json:"midiChan"`
+					} `json:"tracks"`
+				} `json:"state"`
+			}
+			_ = json.Unmarshal(r.e.StateMessage(), &v)
+			for _, tr := range v.State.Tracks {
+				if tr.Name == "Keys" {
+					return tr.Port, tr.Chan, tr.Input
+				}
+			}
+			return -9, -9, ""
+		}
+		eventually(t, "Keys on channel 3", func() bool {
+			var a, b bool
+			kid, _, a = state(r.e).track("Keys")
+			gid, _, b = state(r.e).track("Guitar")
+			p, c, txt := midi()
+			return a && b && p == 0 && c == 3 && txt == "MIDI port 0 · ch 3"
+		})
+
+		r.cmd(t, "setRouting", map[string]any{"track": kid, "midiChannel": 0})
+		eventually(t, "Keys to omni", func() bool { p, c, txt := midi(); return p == 0 && c == 0 && txt == "MIDI port 0 · Omni" })
+		r.cmd(t, "setRouting", map[string]any{"track": kid, "midiChannel": 16, "midiPort": 0})
+		eventually(t, "Keys to channel 16", func() bool { p, c, _ := midi(); return p == 0 && c == 16 })
+
+		r.cmdErr(t, "setRouting", map[string]any{"track": kid, "midiPort": 5})     // no such port
+		r.cmdErr(t, "setRouting", map[string]any{"track": kid, "midiChannel": 17}) // out of range
+		r.cmdErr(t, "setRouting", map[string]any{"track": gid, "midiChannel": 1})  // not a MIDI track
+		r.cmdErr(t, "setRouting", map[string]any{"track": kid, "input": 0})        // MIDI tracks have no audio input
+		if p, c, _ := midi(); p != 0 || c != 16 {
+			t.Fatalf("a refused change moved the connection to port %d channel %d", p, c)
+		}
+	})
+}

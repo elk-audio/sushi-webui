@@ -38,8 +38,8 @@ func (e *Engine) Command(op string, raw json.RawMessage) (map[string]any, error)
 		Channels    int      `json:"channels"`
 		Input       *int     `json:"input"`
 		Output      *int     `json:"output"`
-		MidiPort    int      `json:"midiPort"`
-		MidiChannel int      `json:"midiChannel"`
+		MidiPort    *int     `json:"midiPort"`
+		MidiChannel *int     `json:"midiChannel"`
 		Instrument  string   `json:"instrument"`
 		Fx          string   `json:"fx"`
 		SendFrom    *int32   `json:"sendFrom"`
@@ -69,9 +69,9 @@ func (e *Engine) Command(op string, raw json.RawMessage) (map[string]any, error)
 	structural := true
 	switch op {
 	case "addTrack":
-		newID, err = e.addTrack(a.Kind, a.Name, a.Channels, a.Input, a.Output, a.MidiPort, a.MidiChannel, a.Instrument, a.Fx, a.SendFrom)
+		newID, err = e.addTrack(a.Kind, a.Name, a.Channels, a.Input, a.Output, deref(a.MidiPort), deref(a.MidiChannel), a.Instrument, a.Fx, a.SendFrom)
 	case "setRouting":
-		err = e.setRouting(a.Track, a.Input, a.Output)
+		err = e.setRouting(a.Track, a.Input, a.Output, a.MidiPort, a.MidiChannel)
 	case "removeTrack":
 		err = e.removeTrack(a.Track)
 	case "renameTrack":
@@ -348,6 +348,13 @@ func (e *Engine) uniqueTrackName(name string) string {
 	}
 }
 
+func deref(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
 func (e *Engine) addTrack(kind, name string, channels int, inputArg, outputArg *int, midiPort, midiCh int, instrument, fx string, sendFrom *int32) (int32, error) {
 	e.mu.Lock()
 	input, output := e.defIn, e.defOut
@@ -407,11 +414,7 @@ func (e *Engine) addTrack(kind, name string, channels int, inputArg, outputArg *
 			}
 		}
 	case "midi":
-		mc := rpc.MidiChannel_MIDI_CH_OMNI
-		if midiCh >= 1 && midiCh <= 16 {
-			mc = rpc.MidiChannel_Channel(midiCh)
-		}
-		r, err := c.Midi.ConnectKbdInputToTrack(ctxT(), &rpc.MidiKbdConnection{Track: tid, Channel: &rpc.MidiChannel{Channel: mc}, Port: int32(midiPort)})
+		r, err := c.Midi.ConnectKbdInputToTrack(ctxT(), kbdConnection(tid, midiPort, midiCh))
 		if err := c.Cmd("ConnectKbdInputToTrack", r, err); err != nil {
 			slog.Warn("MIDI connection failed", "track", name, "err", err)
 		}
@@ -449,16 +452,30 @@ func (e *Engine) addTrack(kind, name string, channels int, inputArg, outputArg *
 	return id, nil
 }
 
+// kbdConnection describes a keyboard input: MIDI channel 1..16, anything else is omni.
+func kbdConnection(tid *rpc.TrackIdentifier, port, ch int) *rpc.MidiKbdConnection {
+	mc := rpc.MidiChannel_MIDI_CH_OMNI
+	if ch >= 1 && ch <= 16 {
+		mc = rpc.MidiChannel_Channel(ch)
+	}
+	return &rpc.MidiKbdConnection{Track: tid, Channel: &rpc.MidiChannel{Channel: mc}, Port: int32(port)}
+}
+
 // setRouting moves a track's engine input and/or output (first engine channel, 0-based; nil leaves it
 // as is). Stereo tracks use the pair starting there, a dual-mono track reads that one channel twice.
-func (e *Engine) setRouting(id int32, input, output *int) error {
+// MIDI tracks change their keyboard port and/or channel (0 = omni) instead of an audio input.
+func (e *Engine) setRouting(id int32, input, output, midiPort, midiCh *int) error {
 	e.mu.Lock()
 	t := e.tracks[id]
 	ins, outs := e.st.Sushi.Inputs, e.st.Sushi.Outputs
 	var kind string
 	var mono bool
+	var curPort, curCh int
+	var hasKbd bool
+	ports := e.st.Sushi.MidiInputs
 	if t != nil {
-		kind, mono = t.Kind, t.InMono
+		kind, mono, curPort, curCh = t.Kind, t.InMono, t.MidiPort, t.MidiChan
+		hasKbd = t.MidiPort >= 0
 	}
 	e.mu.Unlock()
 	if t == nil {
@@ -469,6 +486,41 @@ func (e *Engine) setRouting(id int32, input, output *int) error {
 	}
 	c := e.client()
 	tid := &rpc.TrackIdentifier{Id: id}
+	if midiPort != nil || midiCh != nil {
+		if kind != "midi" {
+			return userErr("only MIDI tracks have a MIDI input")
+		}
+		port, ch := curPort, curCh
+		if !hasKbd {
+			port, ch = 0, 0
+		}
+		if midiPort != nil {
+			port = *midiPort
+		}
+		if midiCh != nil {
+			ch = *midiCh
+		}
+		if port < 0 || port >= max(ports, 1) {
+			return userErr("MIDI port %d isn't available (Sushi has %d MIDI inputs)", port, ports)
+		}
+		if ch < 0 || ch > 16 {
+			return userErr("MIDI channel must be Omni or 1-16")
+		}
+		if hasKbd {
+			r, err := c.Midi.DisconnectKbdInput(ctxT(), kbdConnection(tid, curPort, curCh))
+			if err := c.Cmd("DisconnectKbdInput", r, err); err != nil {
+				return userErr("Sushi couldn't change the MIDI input: %v", err)
+			}
+		}
+		r, err := c.Midi.ConnectKbdInputToTrack(ctxT(), kbdConnection(tid, port, ch))
+		if err := c.Cmd("ConnectKbdInputToTrack", r, err); err != nil {
+			if hasKbd { // put the old connection back rather than leave the track deaf
+				r, rerr := c.Midi.ConnectKbdInputToTrack(ctxT(), kbdConnection(tid, curPort, curCh))
+				_ = c.Cmd("ConnectKbdInputToTrack", r, rerr)
+			}
+			return userErr("Sushi couldn't connect MIDI port %d: %v", port, err)
+		}
+	}
 	if input != nil {
 		if kind != "audio" {
 			return userErr("only audio tracks have an audio input")

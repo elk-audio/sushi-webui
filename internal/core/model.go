@@ -71,9 +71,11 @@ type Track struct {
 	Solo     bool    `json:"solo"`
 	Input    string  `json:"input"`
 	Output   string  `json:"output"`
-	InChan   int     `json:"inChan"`  // first engine input channel (0-based), -1 when the track has no audio input
-	OutChan  int     `json:"outChan"` // first engine output channel (0-based), -1 when unconnected
-	InMono   bool    `json:"inMono"`  // both track channels read the same engine input
+	InChan   int     `json:"inChan"`   // first engine input channel (0-based), -1 when the track has no audio input
+	OutChan  int     `json:"outChan"`  // first engine output channel (0-based), -1 when unconnected
+	InMono   bool    `json:"inMono"`   // both track channels read the same engine input
+	MidiPort int     `json:"midiPort"` // MIDI keyboard input port, -1 when the track has none
+	MidiChan int     `json:"midiChan"` // MIDI channel 1..16, 0 = omni (only meaningful with a port)
 	Chain    []*Proc `json:"chain"`
 	Sends    []*Send `json:"sends"`
 	Meter    int     `json:"meter"`
