@@ -7,7 +7,9 @@
 # port of the same device) is mapped to Sushi MIDI port 0 through rt_midi_input_mappings in a
 # generated copy of default.json. MIDI_DEVICE=<index> forces a CoreMIDI source; MIDI_DEVICE=none
 # disables it. On Linux the connection is made with aconnect instead (not implemented yet).
-SUSHI_DIR=${SUSHI_DIR:-../sushi/build-macos-universal/dist/sushi-1.4.0}
+#
+# Env: SUSHI_DIR (required): folder containing the sushi binary, e.g. dist/sushi-1.4.0 of a Sushi build.
+[ -n "$SUSHI_DIR" ] || { echo "Set SUSHI_DIR to the folder that contains the sushi binary" >&2; exit 1; }
 HERE=$(cd "$(dirname "$0")" && pwd)
 CONFIG=$HERE/default.json
 
@@ -43,5 +45,5 @@ PY
 *) echo "MIDI auto-connect on Linux is not implemented yet (use aconnect)" >&2 ;;
 esac
 
-cd "$SUSHI_DIR" || { echo "Sushi not found in $SUSHI_DIR (set SUSHI_DIR)"; exit 1; }
+cd "$SUSHI_DIR" || { echo "Sushi not found in $SUSHI_DIR (check SUSHI_DIR)" >&2; exit 1; }
 exec ./sushi --coreaudio -c "$CONFIG" --grpc-address=localhost:51051 "$@"
