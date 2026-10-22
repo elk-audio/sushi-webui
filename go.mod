@@ -1,6 +1,6 @@
 module github.com/elk-audio/sushi-webui
 
-go 1.27.2
+go 1.25.0
 
 require (
 	github.com/coder/websocket v1.8.14
