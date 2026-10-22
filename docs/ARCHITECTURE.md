@@ -1,4 +1,4 @@
-# Sushi WebUI — Technical Architecture
+# Sushi WebUI: Technical Architecture
 
 Status: **draft for review** · Target Sushi API: `sushi_rpc` 1.2.0 (`rpc_interface/protos/sushi_rpc.proto`)
 
@@ -8,7 +8,7 @@ Status: **draft for review** · Target Sushi API: `sushi_rpc` 1.2.0 (`rpc_interf
 |---|-------------|-------------|
 | G1 | Control Sushi from any browser on the LAN (desktop, tablet, phone) | Browser cannot speak native gRPC/HTTP2 trailers → a backend bridge is mandatory |
 | G2 | Fast VU meters on low-end phones | Meters bypass the UI framework; binary frames; one `requestAnimationFrame` loop on canvas |
-| G3 | Track-centric workflow: Mixer → Track → Plugin | Backend adds track "kind" (audio/MIDI), per-track meters, solo — none exist in Sushi |
+| G3 | Track-centric workflow: Mixer → Track → Plugin | Backend adds track "kind" (audio/MIDI), per-track meters and solo, none of which exist in Sushi |
 | G4 | Run on Elk Audio OS (Yocto, RPi4, read-only rootfs, RT kernel) | No Node on target; single static binary, no runtime deps, low CPU, never steal RT time |
 | G5 | Multiple simultaneous clients (e.g. tablet + phone) | Backend owns a state mirror and fans out deltas; all clients stay consistent |
 
@@ -20,7 +20,7 @@ Non-goals for v1: undo/redo, automation recording, plugin native GUIs, remote (i
 flowchart LR
   subgraph Device["Device (macOS dev box or Elk RPi4)"]
     S["sushi\n(gRPC :51051)"]
-    W["sushi-webui (Go)\nHTTP + WS :8080\nembedded static UI"]
+    W["sushi-webui (Go)\nHTTP + WS :8081\nembedded static UI"]
     FS[("~/.config/sushi-webui\nprojects/*.sushiproj\nplugins.json")]
     PL[("/usr/lib/lv2, ~/.vst3 …")]
     W -- "unary RPCs\n+ 6 server streams" --> S
@@ -37,20 +37,20 @@ Two processes on the device: **sushi** (unchanged) and **sushi-webui**, a single
 ### Why Go
 - Cross-compiles to `linux/arm64` with `CGO_ENABLED=0`: one ~15 MB static binary, no interpreter, nothing to add to the Yocto image (an OE recipe using `go-mod.bbclass` is trivial later; or ship the prebuilt binary).
 - First-class gRPC (`google.golang.org/grpc`), cheap goroutines for the streams, predictable low memory (~20–30 MB RSS).
-- Node (scraporchestra) is not on Elk images and needs manual installation on a remounted rootfs; Python (sushi-gui/elkpy) is available but web-framework packages are not, and the GIL makes meter fan-out less predictable.
+- Node is not on Elk images and needs manual installation on a remounted rootfs; Python (sushi-gui/elkpy) is available but web-framework packages are not, and the GIL makes meter fan-out less predictable.
 
 ### Why Svelte + TypeScript
-- Compiles to small vanilla JS (runtime ≈ a few kB), fine-grained updates without a virtual DOM — good for phones.
+- Compiles to small vanilla JS (runtime ≈ a few kB), fine-grained updates without a virtual DOM, which suits phones.
 - Built on the dev machine with Vite; only static assets (HTML/JS/CSS) are embedded into the Go binary via `embed.FS`. **Node is a dev-time dependency only.**
 
 ## 3. Sushi API facts the design depends on
 
-Verified against this repo:
+Checked against the Sushi source:
 
 | Fact | Source | Design impact |
 |------|--------|---------------|
 | `TrackType` = REGULAR / PRE / POST only | proto `TrackType` | "Audio" vs "MIDI" track is WebUI metadata |
-| `ProcessorInfo{id,label,name,parameter_count,program_count}` — no uid/path/type | proto `ProcessorInfo` | Backend keeps a processor registry (uid, type, role) |
+| `ProcessorInfo{id,label,name,parameter_count,program_count}`, no uid/path/type | proto `ProcessorInfo` | Backend keeps a processor registry (uid, type, role) |
 | No plugin enumeration RPC | — | Backend plugin catalog (§4.10) |
 | Track params `gain` (dB −120..+24), `pan` (−1..1, only when channels ≤ 2), `mute`; multibus adds `gain_sub_N`, `pan_sub_N` | `src/engine/track.cpp:235-268` | Mixer strip controls; tracks addressed as processors in ParameterController |
 | No level parameters on tracks | `track.cpp` | Auto-insert hidden `sushi.testing.peakmeter` as last processor |
@@ -64,7 +64,7 @@ Verified against this repo:
 | `ParameterUpdate{parameter, normalized_value, domain_value, formatted_value}` | proto | No scaling logic re-implemented in UI |
 | Parameter subscription = blocklist only | `grpc_async_service_call_data.h:206-249` | Backend subscribes once to everything, filters per client |
 | CPU timings streamed every 1 s | `TIMING_UPDATE_INTERVAL` | CPU indicator in top bar |
-| Graph mutations are async; completion visible via `ProcessorUpdate`/`TrackUpdate` notifications | proto `NotificationController` | Backend awaits notifications with timeout instead of sleeping (sushi-gui anti-pattern) |
+| Graph mutations are async; completion visible via `ProcessorUpdate`/`TrackUpdate` notifications | proto `NotificationController` | Backend awaits notifications with timeout instead of sleeping (as opposed to fixed sleeps) |
 | `SaveSession`/`RestoreSession` full snapshot; tracks/processors referenced by name | proto `SessionState` | Project files = SessionState + WebUI sidecar, keyed by names |
 | Default gRPC `[::]:51051`, `--grpc-address` | `include/sushi/options.h:52-56,460` | Backend flag `--sushi=localhost:51051` |
 
@@ -240,7 +240,7 @@ All ops are serialized through a single op queue (prevents interleaved graph edi
 ### 4.8 Parameter write path and echo handling
 - Client sends `set` messages as fast as the pointer moves; the client itself throttles to one per animation frame per param.
 - Backend coalescer: per `ParamKey` keep the latest value; a 10 ms ticker flushes pending writes as `SetParameterValue` (bounded concurrency). This bounds gRPC traffic regardless of client count.
-- Sushi notifies the change back (≤ 25 Hz). The model updates and the hub fans out `param` deltas to **all** subscribed clients, tagged with `src: <clientId>` when the most recent write to that param came from that client within 250 ms. The originating client ignores tagged deltas *for a param it is currently dragging*; when the gesture ends it applies the last server value (authoritative). This avoids the fragile "ignore for 400 ms" timer used in scraporchestra.
+- Sushi notifies the change back (≤ 25 Hz). The model updates and the hub fans out `param` deltas to **all** subscribed clients, tagged with `src: <clientId>` when the most recent write to that param came from that client within 250 ms. The originating client ignores tagged deltas *for a param it is currently dragging*; when the gesture ends it applies the last server value (authoritative). This avoids a fragile fixed "ignore for 400 ms" timer.
 
 ### 4.9 Meter pipeline
 
@@ -343,11 +343,11 @@ web/src/
   sheets/AddTrack.svelte PluginBrowser.svelte Projects.svelte
   app.css                   design tokens (CSS custom properties), breakpoints
 ```
-Routing: hash-based (`#/mixer`, `#/track/:name`, `#/track/:name/plugin/:proc`) — works from the embedded file server without server-side routes and survives reloads. Routes use **names**, not ids (stable across Sushi restarts).
+Routing: hash-based (`#/mixer`, `#/track/:name`, `#/track/:name/plugin/:proc`), which works from the embedded file server without server-side routes and survives reloads. Routes use **names**, not ids (stable across Sushi restarts).
 
 ### 6.2 State and reactivity
 - `params` is a `Map<string, ParamState>` of `$state` objects; deltas mutate fields in place so only widgets bound to that param re-render.
-- Graph deltas (rare) replace small arrays (`chain`, `tracks`) — cheap.
+- Graph deltas (rare) replace small arrays (`chain`, `tracks`), which is cheap.
 - No global re-render on parameter changes; no reactivity at all for meters.
 
 ### 6.3 Meter rendering (the hot path)
@@ -393,7 +393,7 @@ Breakpoints: **phone** < 600 px, **tablet** 600–1023 px, **desktop** ≥ 1024 
 
 ### 8.1 Dev
 ```
-cd web && npm i && npm run dev            # Vite on :5173 (proxy /ws → :8080)
+cd web && npm i && npm run dev            # Vite on :5173 (proxy /ws → :8081)
 go run ./cmd/sushi-webui --sushi localhost:51051 --dev
 ```
 `make proto` regenerates stubs from a vendored copy of `sushi_rpc.proto` (pinned to the Sushi release; CI compares it with Sushi's repo).
@@ -407,7 +407,7 @@ GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dis
 ### 8.3 Elk Audio OS
 - Install to `/udata/sushi-webui/` (persistent data partition, no rootfs remount needed) or via a Yocto recipe into `/usr/bin` later.
 - Config/projects in `/udata/sushi-webui/` (`--data-dir`).
-- systemd unit (pattern from scraporchestra):
+- systemd unit:
 ```ini
 [Unit]
 Description=Sushi WebUI
@@ -416,7 +416,7 @@ Wants=network-online.target
 
 [Service]
 User=mind
-ExecStart=/udata/sushi-webui/sushi-webui --listen :8080 --sushi localhost:51051 --data-dir /udata/sushi-webui
+ExecStart=/udata/sushi-webui/sushi-webui --listen :8081 --sushi localhost:51051 --data-dir /udata/sushi-webui
 Restart=on-failure
 Nice=10
 CPUAffinity=0
@@ -428,7 +428,7 @@ WantedBy=multi-user.target
 - Runs at normal priority, pinned away from the audio cores. No RT privileges needed.
 
 ### 8.4 CLI flags
-`--listen :8080`, `--sushi localhost:51051`, `--data-dir`, `--plugin-path` (repeatable), `--auth user:pass` (optional basic auth), `--dev`, `--log-level`.
+`--listen :8081`, `--sushi localhost:51051`, `--data-dir`, `--plugin-path` (repeatable), `--auth user:pass` (optional basic auth), `--dev`, `--log-level`.
 
 ## 9. Security
 LAN-only tool. Binds to all interfaces by default (needed for phones) with optional HTTP basic auth and an `Origin` check on the WebSocket upgrade. No TLS by default (document reverse proxy option). File-path properties (e.g. sample player) are restricted to `--data-dir/samples` and plugin paths.
@@ -439,11 +439,11 @@ LAN-only tool. Binds to all interfaces by default (needed for phones) with optio
 - Frontend: Vitest for stores/protocol; Playwright for flows at 3 viewport sizes; a meter stress page (64 tracks) for fps profiling.
 
 ## 11. Risks and open questions
-1. **Meter ids**: peakmeter is a regular processor and appears in other tools (sushi-gui) and in saved sessions — acceptable; name prefix `__meter__` lets us hide it consistently.
-2. **Solo emulation** (additive, buses solo-safe) writes `mute` on other tracks — a third-party client changing mute concurrently could fight with it. Mitigation: the backend recomputes from `MutedByUser` on every external mute change.
+1. **Meter ids**: peakmeter is a regular processor and appears in other tools (sushi-gui) and in saved sessions. That is acceptable, and the name prefix `__meter__` lets us hide it consistently.
+2. **Solo emulation** (additive, buses solo-safe) writes `mute` on other tracks, so a third-party client changing mute concurrently could fight with it. Mitigation: the backend recomputes from `MutedByUser` on every external mute change.
 3. **Multibus tracks** created outside the WebUI: show per-bus gain/pan in Track view, single meter pair per bus (peakmeter sees all channels).
 4. **Pre/Post tracks**: Master = POST track, ensured at startup; Input = PRE track, created on demand. To verify: `CreatePostTrack`/`CreatePreTrack` at runtime while audio is running.
 7. **Send latency/order**: see §4.7. To verify: Sushi's track processing order and whether a track-reorder RPC is needed upstream.
 8. **Upstream improvements worth proposing to Sushi**: level output parameters on `Track` (removes the hidden peakmeter and the pre-fader correction); a post-fader send option or a send position after track gain (removes send gain compensation).
 5. **Plugin parameter counts** (large VST3s with 1000+ params): virtualized list + lazy value fetch on first view.
-6. Sushi notifications for `MoveProcessorOnTrack` arrive as remove+add — chain order must be re-read with `GetTrackProcessors` after moves (to verify).
+6. Sushi notifications for `MoveProcessorOnTrack` arrive as remove+add, so chain order must be re-read with `GetTrackProcessors` after moves (to verify).

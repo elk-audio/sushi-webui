@@ -1,4 +1,4 @@
-# Sushi WebUI — UX Design
+# Sushi WebUI: UX Design
 
 Status: **draft v2, after first review** · Companion to `ARCHITECTURE.md` · Interactive sketch: `mockups/index.html`
 
@@ -335,7 +335,7 @@ Track mode is for the plugin chain and sends only. It shows the chain at full wi
 └──────────────────────────────┘
 ```
 
-## 7. Widgets — interaction spec
+## 7. Widgets: interaction spec
 
 | Widget | Size (min) | Gesture | Feedback | Reset |
 |--------|-----------|---------|----------|-------|
